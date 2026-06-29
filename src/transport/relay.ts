@@ -1,0 +1,301 @@
+// The resilient relay client. It owns the single WebSocket to the relay and implements the
+// protocol handshake, request and response correlation, heartbeat, exponential backoff
+// reconnect, and an outbound queue. It is environment agnostic: the WebSocket constructor
+// is injected, so the same code runs over Hermes global WebSocket in the app and over the
+// ws package in the Node end to end harness.
+
+import {
+  PROTOCOL_VERSION,
+  type ServerMessage,
+  type ClientMessage,
+  type MessageEnvelope,
+  type PreKeyBundle,
+  type PreKeyUpload,
+  type PushRegistration,
+  type ErrorCodeValue,
+} from '@nuco/protocol';
+
+import { signChallenge, type AuthKeyPair } from '../crypto/identity';
+
+export interface WebSocketLike {
+  send(data: string): void;
+  close(): void;
+  onopen: ((ev?: unknown) => void) | null;
+  onmessage: ((ev: { data: unknown }) => void) | null;
+  onclose: ((ev?: unknown) => void) | null;
+  onerror: ((ev?: unknown) => void) | null;
+}
+export type WebSocketCtor = new (url: string) => WebSocketLike;
+
+export interface RegisterParams {
+  identityKey: string;
+  authKey: string;
+  registrationId: number;
+  deviceId: number;
+  push: PushRegistration;
+}
+
+export type RelayStatus = 'disconnected' | 'connecting' | 'reconnecting' | 'connected';
+
+export interface RelayClientOptions {
+  url: string;
+  handle: string;
+  authKeyPair: AuthKeyPair;
+  WebSocketImpl: WebSocketCtor;
+  // When the handle is brand new, register before authenticating. Cleared after the first
+  // successful registration; reconnects then only authenticate.
+  registerOnConnect?: RegisterParams;
+  onDeliver: (from: string, envelope: MessageEnvelope) => void | Promise<void>;
+  onStatus?: (status: RelayStatus) => void;
+  onError?: (code: ErrorCodeValue) => void;
+  autoReconnect?: boolean;
+  heartbeatMs?: number;
+}
+
+const HEARTBEAT_MS = 30000;
+const BACKOFF_BASE_MS = 500;
+const BACKOFF_MAX_MS = 30000;
+const REQUEST_TIMEOUT_MS = 20000;
+
+type PendingResolver = { resolve: (m: ServerMessage) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> };
+type OutboundItem = { to: string; envelope: MessageEnvelope; resolve: () => void; reject: (e: Error) => void };
+
+export class RelayClient {
+  private ws: WebSocketLike | null = null;
+  private status: RelayStatus = 'disconnected';
+  private ridCounter = 0;
+  private readonly pending = new Map<string, PendingResolver>();
+  private readonly outbound: OutboundItem[] = [];
+  private readyWaiters: Array<() => void> = [];
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private reconnectAttempts = 0;
+  private closedByUser = false;
+  private registerParams?: RegisterParams;
+
+  constructor(private readonly opts: RelayClientOptions) {
+    this.registerParams = opts.registerOnConnect;
+  }
+
+  start(): void {
+    this.closedByUser = false;
+    this.openSocket();
+  }
+
+  stop(): void {
+    this.closedByUser = true;
+    this.stopHeartbeat();
+    this.ws?.close();
+    this.ws = null;
+    this.setStatus('disconnected');
+  }
+
+  getStatus(): RelayStatus {
+    return this.status;
+  }
+
+  isConnected(): boolean {
+    return this.status === 'connected';
+  }
+
+  ensureReady(): Promise<void> {
+    if (this.status === 'connected') return Promise.resolve();
+    return new Promise((resolve) => this.readyWaiters.push(resolve));
+  }
+
+  async publishPreKeys(upload: PreKeyUpload): Promise<number> {
+    await this.ensureReady();
+    const reply = await this.request((rid) => ({ type: 'publishPreKeys', rid, preKeys: upload }));
+    return reply.type === 'ok' ? Number(reply.data?.oneTimeCount ?? 0) : 0;
+  }
+
+  async fetchPreKeyBundle(handle: string): Promise<PreKeyBundle> {
+    await this.ensureReady();
+    const reply = await this.request((rid) => ({ type: 'fetchPreKeyBundle', rid, handle }));
+    if (reply.type !== 'preKeyBundle') throw new Error('unexpected reply to fetchPreKeyBundle');
+    return reply.bundle;
+  }
+
+  async preKeyCount(): Promise<{ hasSignedPreKey: boolean; oneTimeCount: number }> {
+    await this.ensureReady();
+    const reply = await this.request((rid) => ({ type: 'preKeyCount', rid }));
+    if (reply.type !== 'preKeyCountResult') throw new Error('unexpected reply to preKeyCount');
+    return { hasSignedPreKey: reply.hasSignedPreKey, oneTimeCount: reply.oneTimeCount };
+  }
+
+  // Update the device record (for example a new push token) on an authenticated socket.
+  async updateRegistration(params: RegisterParams): Promise<void> {
+    await this.ensureReady();
+    await this.request((rid) => ({ type: 'register', rid, ...params }));
+  }
+
+  // Hand a sealed envelope to the relay. Resolves when the relay accepts it; queued while
+  // offline and flushed on reconnect.
+  sendEnvelope(to: string, envelope: MessageEnvelope): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.outbound.push({ to, envelope, resolve, reject });
+      if (this.status === 'connected') void this.flushOutbound();
+    });
+  }
+
+  ack(id: string): void {
+    if (this.status === 'connected') this.sendFrame({ type: 'ack', id });
+  }
+
+  // --- internals ---
+
+  private setStatus(next: RelayStatus): void {
+    this.status = next;
+    this.opts.onStatus?.(next);
+  }
+
+  private openSocket(): void {
+    this.setStatus(this.reconnectAttempts > 0 ? 'reconnecting' : 'connecting');
+    const ws = new this.opts.WebSocketImpl(this.opts.url);
+    this.ws = ws;
+    ws.onopen = () => this.sendFrame({ type: 'connect', protocolVersion: PROTOCOL_VERSION, handle: this.opts.handle });
+    ws.onmessage = (ev) => this.onMessage(typeof ev.data === 'string' ? ev.data : String(ev.data));
+    ws.onclose = () => this.onClose();
+    ws.onerror = () => this.ws?.close();
+  }
+
+  private sendFrame(msg: ClientMessage): void {
+    this.ws?.send(JSON.stringify(msg));
+  }
+
+  private nextRid(): string {
+    this.ridCounter += 1;
+    return `r${this.ridCounter}`;
+  }
+
+  private request(build: (rid: string) => ClientMessage): Promise<ServerMessage> {
+    const rid = this.nextRid();
+    return new Promise<ServerMessage>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(rid);
+        reject(new Error('relay request timed out'));
+      }, REQUEST_TIMEOUT_MS);
+      this.pending.set(rid, { resolve, reject, timer });
+      this.sendFrame(build(rid));
+    });
+  }
+
+  private settleRid(rid: string, settle: (p: PendingResolver) => void): void {
+    const p = this.pending.get(rid);
+    if (!p) return;
+    clearTimeout(p.timer);
+    this.pending.delete(rid);
+    settle(p);
+  }
+
+  private onMessage(raw: string): void {
+    let msg: ServerMessage;
+    try {
+      msg = JSON.parse(raw) as ServerMessage;
+    } catch {
+      return;
+    }
+    switch (msg.type) {
+      case 'connected':
+        void this.onConnected(msg.challenge);
+        return;
+      case 'authenticated':
+        this.onAuthenticated();
+        return;
+      case 'deliver':
+        void this.opts.onDeliver(msg.from, msg.envelope);
+        return;
+      case 'ok':
+      case 'preKeyBundle':
+      case 'preKeyCountResult': {
+        const rid = msg.rid;
+        this.settleRid(rid, (p) => p.resolve(msg));
+        return;
+      }
+      case 'error':
+        if (msg.rid) this.settleRid(msg.rid, (p) => p.reject(new Error(msg.code)));
+        this.opts.onError?.(msg.code);
+        return;
+      case 'pong':
+        return;
+    }
+  }
+
+  private async onConnected(challenge: string): Promise<void> {
+    try {
+      if (this.registerParams) {
+        await this.request((rid) => ({ type: 'register', rid, ...this.registerParams! }));
+        this.registerParams = undefined; // registered once; reconnects only authenticate
+      }
+      this.sendFrame({ type: 'authenticate', signature: signChallenge(this.opts.authKeyPair, challenge) });
+    } catch {
+      this.ws?.close();
+    }
+  }
+
+  private onAuthenticated(): void {
+    this.reconnectAttempts = 0;
+    this.setStatus('connected');
+    this.startHeartbeat();
+    const waiters = this.readyWaiters;
+    this.readyWaiters = [];
+    for (const w of waiters) w();
+    void this.flushOutbound();
+  }
+
+  private async flushOutbound(): Promise<void> {
+    while (this.outbound.length > 0 && this.status === 'connected') {
+      const item = this.outbound[0]!;
+      try {
+        await this.request((rid) => ({ type: 'send', rid, to: item.to, envelope: item.envelope }));
+        this.outbound.shift();
+        item.resolve();
+      } catch (err) {
+        // Stop on the first failure; remaining items flush on the next ready.
+        if (this.status === 'connected') {
+          this.outbound.shift();
+          item.reject(err instanceof Error ? err : new Error('send failed'));
+        }
+        return;
+      }
+    }
+  }
+
+  private onClose(): void {
+    this.stopHeartbeat();
+    for (const [, p] of this.pending) {
+      clearTimeout(p.timer);
+      p.reject(new Error('connection closed'));
+    }
+    this.pending.clear();
+    this.ws = null;
+    if (this.closedByUser || this.opts.autoReconnect === false) {
+      this.setStatus('disconnected');
+      return;
+    }
+    this.scheduleReconnect();
+  }
+
+  private scheduleReconnect(): void {
+    this.setStatus('reconnecting');
+    const base = Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** this.reconnectAttempts);
+    const jitter = base * 0.25 * Math.random();
+    this.reconnectAttempts += 1;
+    setTimeout(() => {
+      if (!this.closedByUser) this.openSocket();
+    }, base + jitter);
+  }
+
+  private startHeartbeat(): void {
+    this.stopHeartbeat();
+    this.heartbeatTimer = setInterval(() => {
+      this.sendFrame({ type: 'ping', ts: Date.now() });
+    }, this.opts.heartbeatMs ?? HEARTBEAT_MS);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+  }
+}
