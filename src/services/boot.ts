@@ -9,6 +9,7 @@ import { resolveServerUrl } from './server';
 import { loadPrefs } from './prefs';
 import { useSession } from '@/state/session';
 import { sweepExpired } from '@/db/repos/messages';
+import { registerPush } from '@/transport/push';
 
 function wireRelayCallbacks(): void {
   setOnRelayStatus((status) => useSession.getState().setRelayStatus(status));
@@ -25,6 +26,7 @@ export async function goOnlineFirstRun(account: Account, upload: import('@nuco/p
   const client = startRelay(resolveServerUrl(prefs), account, registerParamsFor(account, { kind: 'none' }));
   await client.ensureReady();
   await client.publishPreKeys(upload);
+  void registerPush();
 }
 
 // Returning user, after unlock.
@@ -36,6 +38,7 @@ export async function bringOnline(): Promise<void> {
   wireRelayCallbacks();
   startRelay(resolveServerUrl(prefs), account);
   await sweepExpired(Date.now());
+  void registerPush();
 }
 
 export function relayConnected(): boolean {

@@ -1,23 +1,39 @@
 {
   "expo": {
-    "name": "nuco-messenger",
+    "name": "Nuco",
     "slug": "nuco-messenger",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "nucomessenger",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0A0B0E",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.zlsoftware.nuco",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Unlock Nuco with Face ID.",
+        "NSCameraUsageDescription": "Nuco uses the camera only to scan a contact's code.",
+        "UIBackgroundModes": ["remote-notification"]
+      }
     },
     "android": {
+      "package": "com.zlsoftware.nuco",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#0A0B0E",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "CAMERA",
+        "POST_NOTIFICATIONS",
+        "USE_BIOMETRIC",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_DATA_SYNC"
+      ]
     },
     "web": {
       "output": "static",
@@ -25,10 +41,11 @@
     },
     "plugins": [
       "expo-router",
+      "expo-dev-client",
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#0A0B0E",
           "android": {
             "image": "./assets/images/splash-icon.png",
             "imageWidth": 76
@@ -36,7 +53,20 @@
         }
       ],
       "expo-secure-store",
-      "expo-localization"
+      "expo-localization",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Nuco uses the camera only to scan a contact's code."
+        }
+      ],
+      "expo-notifications",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Unlock Nuco with Face ID."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

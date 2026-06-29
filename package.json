@@ -18,6 +18,7 @@
     "expo-camera": "~56.0.8",
     "expo-constants": "~56.0.18",
     "expo-crypto": "~56.0.4",
+    "expo-dev-client": "~56.0.20",
     "expo-device": "~56.0.4",
     "expo-font": "~56.0.7",
     "expo-glass-effect": "~56.0.4",
@@ -27,6 +28,7 @@
     "expo-linking": "~56.0.14",
     "expo-local-authentication": "~56.0.4",
     "expo-localization": "~56.0.6",
+    "expo-notifications": "~56.0.18",
     "expo-router": "~56.2.11",
     "expo-secure-store": "~56.0.4",
     "expo-splash-screen": "~56.0.10",
@@ -62,7 +64,11 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
-    "crypto:selftest": "tsx scripts/crypto-selftest.ts"
+    "crypto:selftest": "tsx scripts/crypto-selftest.ts",
+    "i18n:check": "tsx scripts/i18n-check.ts"
   },
-  "private": true
+  "private": true,
+  "op-sqlite": {
+    "sqlcipher": true
+  }
 }

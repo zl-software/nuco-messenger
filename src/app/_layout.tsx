@@ -18,6 +18,7 @@ import { initI18n } from '@/i18n';
 import { useSettings } from '@/state/settings';
 import { useSession } from '@/state/session';
 import { attachAppStateGate, subscribeLock } from '@/lock/lock-controller';
+import { configureNotifications } from '@/transport/push';
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -30,6 +31,7 @@ export default function RootLayout() {
   useEffect(() => {
     let mounted = true;
     initI18n();
+    void configureNotifications();
     void hydrate().then(() => {
       if (mounted) setReady(true);
     });
