@@ -2,6 +2,10 @@
 // crypto. Hermes does not provide crypto.getRandomValues or a Buffer global, both of which
 // the Signal library and its dependencies expect.
 
+// Must run before anything that imports the Signal library (the bundled curve module
+// constructs a utf-16le TextDecoder at load time, which Hermes does not support).
+import './text-polyfill';
+
 import * as ExpoCrypto from 'expo-crypto';
 import { Buffer } from 'buffer';
 
