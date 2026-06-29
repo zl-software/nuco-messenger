@@ -21,4 +21,11 @@ config.resolver.nodeModulesPaths = [
   path.resolve(protocolRoot, 'node_modules'),
 ];
 
+// Map the "buffer" specifier to the npm polyfill package rather than the Node builtin, which
+// Metro does not bundle. Some Signal dependencies expect a global Buffer in Hermes.
+config.resolver.extraNodeModules = {
+  ...(config.resolver.extraNodeModules ?? {}),
+  buffer: require.resolve('buffer/'),
+};
+
 module.exports = config;
