@@ -20,7 +20,7 @@ export type TextVariant =
   | 'eyebrow';
 
 const VARIANTS: Record<TextVariant, TextStyle> = {
-  display: { fontFamily: Fonts.extrabold, fontSize: 28, letterSpacing: -0.84, color: Colors.text },
+  display: { fontFamily: Fonts.extrabold, fontSize: 28, lineHeight: 36, letterSpacing: -0.84, color: Colors.text },
   titleXl: { fontFamily: Fonts.bold, fontSize: 26, letterSpacing: -0.52, color: Colors.text, lineHeight: 31 },
   title: { fontFamily: Fonts.bold, fontSize: 20, letterSpacing: -0.2, color: Colors.text },
   section: { fontFamily: Fonts.bold, fontSize: 19, letterSpacing: -0.19, color: Colors.text },

@@ -34,3 +34,16 @@ export async function closeEncryptedDb(): Promise<void> {
     connection = null;
   }
 }
+
+// Delete the encrypted database file. Needed before provisioning a fresh account, because
+// SQLCipher cannot reopen an existing file with a new key, and for the dev reset.
+export async function deleteDatabaseFile(): Promise<void> {
+  await closeEncryptedDb();
+  try {
+    // open() does not verify the key (SQLCipher checks it on first query), so this handle is
+    // valid just to delete the file.
+    open({ name: DB_NAME, encryptionKey: 'delete' }).delete();
+  } catch {
+    // No file to delete.
+  }
+}

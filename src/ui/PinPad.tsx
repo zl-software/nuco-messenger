@@ -78,7 +78,7 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 22, maxWidth: 3 * KEY + 2 * 22, alignSelf: 'center' },
   key: { width: KEY, height: KEY, borderRadius: KEY / 2, alignItems: 'center', justifyContent: 'center' },
   keyFilled: { backgroundColor: Colors.surface2, borderWidth: 1, borderColor: Overlay.hairline },
-  digit: { fontFamily: Fonts.medium, fontSize: 28, color: Colors.text },
-  letters: { fontFamily: Fonts.monoMedium, fontSize: 8, letterSpacing: 1.4, color: Colors.textSecondary, marginTop: 1 },
-  del: { fontSize: 24, color: Colors.textSecondary },
+  digit: { fontFamily: Fonts.medium, fontSize: 28, lineHeight: 36, color: Colors.text, textAlign: 'center', includeFontPadding: false },
+  letters: { fontFamily: Fonts.monoMedium, fontSize: 8, lineHeight: 12, letterSpacing: 1.4, color: Colors.textSecondary, marginTop: 1 },
+  del: { fontSize: 24, lineHeight: 30, color: Colors.textSecondary },
 });

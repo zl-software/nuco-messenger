@@ -1,10 +1,12 @@
 // Standard screen container: the dark gradient background plus safe area insets. Optional
-// accent glow at a focal point for hero screens (onboarding, lock, success).
+// accent glow at the top for hero screens (onboarding, lock, success), rendered as a soft
+// radial gradient that fades to transparent.
 
 import type { ReactNode } from 'react';
 import { StyleSheet, View, type ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
+import Svg, { Defs, RadialGradient, Stop, Rect } from 'react-native-svg';
 
 import { Colors } from '@/constants/theme';
 
@@ -19,7 +21,18 @@ export function Screen({ children, edges = ['top', 'bottom'], contentStyle, glow
   return (
     <View style={styles.root}>
       <LinearGradient colors={[Colors.backgroundTop, Colors.background]} style={StyleSheet.absoluteFill} />
-      {glow ? <View style={styles.glow} pointerEvents="none" /> : null}
+      {glow ? (
+        <Svg style={styles.glow} pointerEvents="none">
+          <Defs>
+            <RadialGradient id="nucoGlow" cx="50%" cy="0%" r="75%">
+              <Stop offset="0%" stopColor={Colors.accent} stopOpacity={0.16} />
+              <Stop offset="55%" stopColor={Colors.accent} stopOpacity={0.05} />
+              <Stop offset="100%" stopColor={Colors.accent} stopOpacity={0} />
+            </RadialGradient>
+          </Defs>
+          <Rect x="0" y="0" width="100%" height="100%" fill="url(#nucoGlow)" />
+        </Svg>
+      ) : null}
       <SafeAreaView style={[styles.safe, contentStyle]} edges={edges}>
         {children}
       </SafeAreaView>
@@ -30,13 +43,5 @@ export function Screen({ children, edges = ['top', 'bottom'], contentStyle, glow
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.background },
   safe: { flex: 1 },
-  glow: {
-    position: 'absolute',
-    top: -120,
-    alignSelf: 'center',
-    width: 520,
-    height: 360,
-    borderRadius: 360,
-    backgroundColor: 'rgba(25,227,177,0.08)',
-  },
+  glow: { position: 'absolute', top: 0, left: 0, right: 0, height: 420, width: '100%' },
 });

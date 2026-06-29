@@ -49,6 +49,9 @@ export async function generatePreKeys(
   const oneTimePreKeys: PreKeyPairType[] = [];
   for (let i = 0; i < count; i++) {
     oneTimePreKeys.push(await KeyHelper.generatePreKey(startId + i));
+    // Yield to the event loop periodically so the keygen UI stays responsive while the
+    // pure JavaScript curve generates keys.
+    if (i % 4 === 3) await new Promise((resolve) => setTimeout(resolve, 0));
   }
   return { signedPreKey, oneTimePreKeys };
 }

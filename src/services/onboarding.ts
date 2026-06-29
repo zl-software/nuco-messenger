@@ -3,7 +3,7 @@
 // mark onboarding complete.
 
 import { provisionDatabaseKey, setPinWrappedKey } from '@/crypto/secure-storage';
-import { openEncryptedDb } from '@/db/client';
+import { openEncryptedDb, deleteDatabaseFile } from '@/db/client';
 import { markUnlockedWithKey } from '@/lock/lock-controller';
 import { provisionAccount, type Account } from './account';
 import { goOnlineFirstRun } from './boot';
@@ -28,6 +28,8 @@ export function getDisplayNameDraft(): string {
 
 // Generate keys: create the database key, open the encrypted db, and provision the account.
 export async function runKeyGeneration(): Promise<{ fingerprint: string }> {
+  // A fresh account needs a fresh database; SQLCipher cannot reopen an old file with a new key.
+  await deleteDatabaseFile();
   const dbKeyB64 = await provisionDatabaseKey();
   await openEncryptedDb(dbKeyB64);
   markUnlockedWithKey(dbKeyB64);
@@ -45,9 +47,9 @@ export async function setPin(pin: string): Promise<void> {
 
 export async function completeOnboarding(): Promise<void> {
   if (draft.account && draft.upload) {
-    await goOnlineFirstRun(draft.account, draft.upload).catch(() => {
-      // The relay may be unreachable during onboarding; the app retries on next launch.
-    });
+    // Connect and publish prekeys in the background. The relay may be unreachable right now;
+    // never block finishing onboarding on it (the client auto reconnects).
+    void goOnlineFirstRun(draft.account, draft.upload).catch(() => undefined);
   }
   await useSettings.getState().update({ onboardingComplete: true });
   draft = { displayName: '' };

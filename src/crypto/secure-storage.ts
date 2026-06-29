@@ -46,7 +46,7 @@ export async function getDatabaseKeyWithBiometrics(prompt: string): Promise<stri
 
 // Store (or replace) the PIN wrapped copy of the database key.
 export async function setPinWrappedKey(dbKeyB64: string, pin: string): Promise<void> {
-  const wrapped = wrapKeyWithPin(base64ToBytes(dbKeyB64), pin);
+  const wrapped = await wrapKeyWithPin(base64ToBytes(dbKeyB64), pin);
   await SecureStore.setItemAsync(DB_KEY_PIN, JSON.stringify(wrapped), DEVICE_BOUND);
 }
 
@@ -55,7 +55,7 @@ export async function getDatabaseKeyWithPin(pin: string): Promise<string> {
   const json = await SecureStore.getItemAsync(DB_KEY_PIN, DEVICE_BOUND);
   if (!json) throw new Error('no PIN wrapped key');
   const wrapped = JSON.parse(json) as WrappedKey;
-  return bytesToBase64(unwrapKeyWithPin(wrapped, pin));
+  return bytesToBase64(await unwrapKeyWithPin(wrapped, pin));
 }
 
 export async function changePin(oldPin: string, newPin: string): Promise<void> {

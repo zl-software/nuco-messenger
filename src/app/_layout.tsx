@@ -29,6 +29,19 @@ export default function RootLayout() {
   const setLockStatus = useSession((s) => s.setLockStatus);
 
   useEffect(() => {
+    if (__DEV__) {
+      // Add a "Clear Nuco keys & restart" item to the shake dev menu.
+      import('expo-dev-menu')
+        .then((m) =>
+          import('@/services/dev').then((dev) =>
+            m.registerDevMenuItems([{ name: 'Clear Nuco keys & restart', callback: () => void dev.devReset() }]),
+          ),
+        )
+        .catch(() => undefined);
+    }
+  }, []);
+
+  useEffect(() => {
     let mounted = true;
     initI18n();
     void configureNotifications();

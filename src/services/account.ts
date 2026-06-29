@@ -20,7 +20,7 @@ import type { PreKeyUpload } from '@nuco/protocol';
 import { SqliteSignalBackend } from '@/db/signal-backend';
 import { getMetaJson, setMetaJson } from '@/db/repos/meta';
 
-const ONE_TIME_PREKEY_COUNT = 100;
+const ONE_TIME_PREKEY_COUNT = 20;
 
 export interface Account {
   handle: string;

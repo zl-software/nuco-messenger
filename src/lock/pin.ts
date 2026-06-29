@@ -2,8 +2,11 @@
 // a random salt) that encrypts a copy of the random database key, so the PIN can release
 // the database key as a fallback when biometrics are unavailable or the biometric set has
 // changed. A wrong PIN fails the authenticated decryption rather than producing a key.
+//
+// scrypt runs through scryptAsync so it yields to the UI thread instead of freezing the app
+// while the key is derived.
 
-import { scrypt } from '@noble/hashes/scrypt.js';
+import { scryptAsync } from '@noble/hashes/scrypt.js';
 import { gcm } from '@noble/ciphers/aes.js';
 import { randomBytes } from '@noble/hashes/utils.js';
 
@@ -21,14 +24,14 @@ export interface WrappedKey {
   salt: string; // base64
 }
 
-function deriveWrappingKey(pin: string, salt: Uint8Array): Uint8Array {
-  return scrypt(utf8Encode(pin), salt, { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P, dkLen: KEY_LEN });
+function deriveWrappingKey(pin: string, salt: Uint8Array): Promise<Uint8Array> {
+  return scryptAsync(utf8Encode(pin), salt, { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P, dkLen: KEY_LEN });
 }
 
 // Wrap the raw database key with a PIN derived key.
-export function wrapKeyWithPin(dbKey: Uint8Array, pin: string): WrappedKey {
+export async function wrapKeyWithPin(dbKey: Uint8Array, pin: string): Promise<WrappedKey> {
   const salt = randomBytes(SALT_LEN);
-  const wrappingKey = deriveWrappingKey(pin, salt);
+  const wrappingKey = await deriveWrappingKey(pin, salt);
   const nonce = randomBytes(NONCE_LEN);
   const ciphertext = gcm(wrappingKey, nonce).encrypt(dbKey);
   const blob = new Uint8Array(nonce.length + ciphertext.length);
@@ -38,8 +41,8 @@ export function wrapKeyWithPin(dbKey: Uint8Array, pin: string): WrappedKey {
 }
 
 // Unwrap the database key. Throws if the PIN is wrong (GCM authentication fails).
-export function unwrapKeyWithPin(wrapped: WrappedKey, pin: string): Uint8Array {
-  const wrappingKey = deriveWrappingKey(pin, base64ToBytes(wrapped.salt));
+export async function unwrapKeyWithPin(wrapped: WrappedKey, pin: string): Promise<Uint8Array> {
+  const wrappingKey = await deriveWrappingKey(pin, base64ToBytes(wrapped.salt));
   const blob = base64ToBytes(wrapped.wrapped);
   const nonce = blob.slice(0, NONCE_LEN);
   const ciphertext = blob.slice(NONCE_LEN);
