@@ -1,11 +1,15 @@
 // A bottom sheet over a dimmed backdrop, matching the design (grabber, header with close,
-// rounded top corners).
+// rounded top corners). The backdrop dims the whole screen in place (opacity only) while just
+// the sheet slides up, so the dim never appears to travel up with the sheet.
 
-import type { ReactNode } from 'react';
-import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Animated, Easing, Modal, Pressable, StyleSheet, View } from 'react-native';
 
 import { Colors, Overlay, Spacing } from '@/constants/theme';
 import { Text } from './Text';
+
+// Start the sheet fully below the screen before it slides up. Larger than any realistic sheet.
+const HIDDEN_OFFSET = 560;
 
 export interface BottomSheetProps {
   visible: boolean;
@@ -15,10 +19,48 @@ export interface BottomSheetProps {
 }
 
 export function BottomSheet({ visible, title, onClose, children }: BottomSheetProps) {
+  const [mounted, setMounted] = useState(visible);
+  const backdrop = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(HIDDEN_OFFSET)).current;
+
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      backdrop.setValue(0);
+      translateY.setValue(HIDDEN_OFFSET);
+      Animated.parallel([
+        Animated.timing(backdrop, { toValue: 1, duration: 110, useNativeDriver: true }),
+        Animated.timing(translateY, {
+          toValue: 0,
+          duration: 240,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start();
+      return;
+    }
+    if (!mounted) return;
+    Animated.parallel([
+      Animated.timing(backdrop, { toValue: 0, duration: 160, useNativeDriver: true }),
+      Animated.timing(translateY, {
+        toValue: HIDDEN_OFFSET,
+        duration: 200,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start(({ finished }) => {
+      if (finished) setMounted(false);
+    });
+    // Only re-run when visibility flips; the animated values and mounted flag are stable refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} />
-      <View style={styles.sheet}>
+    <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose}>
+      <Animated.View style={[styles.backdrop, { opacity: backdrop }]}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+      </Animated.View>
+      <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
         <View style={styles.grabber} />
         <View style={styles.header}>
           <Text variant="title">{title}</Text>
@@ -27,7 +69,7 @@ export function BottomSheet({ visible, title, onClose, children }: BottomSheetPr
           </Pressable>
         </View>
         {children}
-      </View>
+      </Animated.View>
     </Modal>
   );
 }

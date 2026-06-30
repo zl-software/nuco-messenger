@@ -14,6 +14,7 @@ export type ScanOutcome =
   | { kind: 'added'; contact: Contact; alreadyExisted: boolean }
   | { kind: 'invalid' }
   | { kind: 'notNuco' }
+  | { kind: 'offline' }
   | { kind: 'mismatch' };
 
 const DEFAULT_RETENTION_SECONDS = 86400;
@@ -34,7 +35,10 @@ export function parseScannedCode(data: string): ContactCard | 'invalid' | 'notNu
 // fetched bundle's identity key must match the card. The scanner can then mark verified.
 export async function addContactFromCard(card: ContactCard): Promise<ScanOutcome> {
   const relay = getRelay();
-  if (!relay) return { kind: 'invalid' };
+  // Fetching the bundle waits on the socket being ready, which never resolves while the relay
+  // is unreachable. Give an in progress connect a few seconds, then fail with a clear offline
+  // outcome instead of hanging the scan forever.
+  if (!relay || !(await relay.waitUntilReady(8000))) return { kind: 'offline' };
 
   const existing = await getContactByHandle(card.handle);
   const now = Date.now();

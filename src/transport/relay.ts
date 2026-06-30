@@ -6,6 +6,7 @@
 
 import {
   PROTOCOL_VERSION,
+  ErrorCode,
   type ServerMessage,
   type ClientMessage,
   type MessageEnvelope,
@@ -42,8 +43,10 @@ export interface RelayClientOptions {
   handle: string;
   authKeyPair: AuthKeyPair;
   WebSocketImpl: WebSocketCtor;
-  // When the handle is brand new, register before authenticating. Cleared after the first
-  // successful registration; reconnects then only authenticate.
+  // Used to register this handle if the relay reports it is not registered (a brand new handle,
+  // or a self hosted/reset relay that has never seen us). The client authenticates first and
+  // only falls back to registering on a NotRegistered error, so an already registered device is
+  // never rejected for trying to re-register before authenticating.
   registerOnConnect?: RegisterParams;
   onDeliver: (from: string, envelope: MessageEnvelope) => void | Promise<void>;
   onStatus?: (status: RelayStatus) => void;
@@ -71,6 +74,8 @@ export class RelayClient {
   private reconnectAttempts = 0;
   private closedByUser = false;
   private registerParams?: RegisterParams;
+  private pendingChallenge: string | null = null;
+  private didTryRegister = false;
 
   constructor(private readonly opts: RelayClientOptions) {
     this.registerParams = opts.registerOnConnect;
@@ -100,6 +105,24 @@ export class RelayClient {
   ensureReady(): Promise<void> {
     if (this.status === 'connected') return Promise.resolve();
     return new Promise((resolve) => this.readyWaiters.push(resolve));
+  }
+
+  // Resolve true once connected, or false after timeoutMs. Unlike ensureReady this never hangs,
+  // so callers can wait briefly for an in progress connect without risking a permanent stall.
+  waitUntilReady(timeoutMs: number): Promise<boolean> {
+    if (this.status === 'connected') return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const onReady = () => {
+        clearTimeout(timer);
+        resolve(true);
+      };
+      const timer = setTimeout(() => {
+        const idx = this.readyWaiters.indexOf(onReady);
+        if (idx >= 0) this.readyWaiters.splice(idx, 1);
+        resolve(false);
+      }, timeoutMs);
+      this.readyWaiters.push(onReady);
+    });
   }
 
   async publishPreKeys(upload: PreKeyUpload): Promise<number> {
@@ -212,7 +235,13 @@ export class RelayClient {
         return;
       }
       case 'error':
-        if (msg.rid) this.settleRid(msg.rid, (p) => p.reject(new Error(msg.code)));
+        if (msg.rid) {
+          this.settleRid(msg.rid, (p) => p.reject(new Error(msg.code)));
+        } else if (msg.code === ErrorCode.NotRegistered && this.registerParams && !this.didTryRegister) {
+          // Authentication said the relay does not know us yet: register, then retry auth.
+          void this.registerThenAuthenticate();
+          return;
+        }
         this.opts.onError?.(msg.code);
         return;
       case 'pong':
@@ -220,13 +249,33 @@ export class RelayClient {
     }
   }
 
-  private async onConnected(challenge: string): Promise<void> {
+  private onConnected(challenge: string): void {
+    // Authenticate first. An already registered handle succeeds straight away; only if the relay
+    // does not know us do we register and retry (see onMessage's NotRegistered handling).
+    this.pendingChallenge = challenge;
+    this.didTryRegister = false;
+    this.sendAuthenticate();
+  }
+
+  private sendAuthenticate(): void {
+    if (!this.pendingChallenge) return;
+    this.sendFrame({
+      type: 'authenticate',
+      signature: signChallenge(this.opts.authKeyPair, this.pendingChallenge),
+    });
+  }
+
+  // The relay does not know this handle (fresh handle, or a self hosted/reset relay). Register
+  // it, then retry authentication with the same challenge.
+  private async registerThenAuthenticate(): Promise<void> {
+    if (!this.registerParams || this.didTryRegister) {
+      this.ws?.close();
+      return;
+    }
+    this.didTryRegister = true;
     try {
-      if (this.registerParams) {
-        await this.request((rid) => ({ type: 'register', rid, ...this.registerParams! }));
-        this.registerParams = undefined; // registered once; reconnects only authenticate
-      }
-      this.sendFrame({ type: 'authenticate', signature: signChallenge(this.opts.authKeyPair, challenge) });
+      await this.request((rid) => ({ type: 'register', rid, ...this.registerParams! }));
+      this.sendAuthenticate();
     } catch {
       this.ws?.close();
     }

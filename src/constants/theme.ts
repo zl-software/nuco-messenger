@@ -116,3 +116,8 @@ export const cardHairline = {
 } as const;
 
 export const MaxContentWidth = 480;
+
+// Motion timing. Single source for screen transition durations so navigation feels snappy.
+export const Motion = {
+  screen: 160,
+} as const;

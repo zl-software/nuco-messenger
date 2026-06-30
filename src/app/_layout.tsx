@@ -12,7 +12,7 @@ import { Stack } from 'expo-router';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 
-import { Colors } from '@/constants/theme';
+import { Colors, Motion } from '@/constants/theme';
 import { fontMap } from '@/ui/fonts';
 import { initI18n } from '@/i18n';
 import { useSettings } from '@/state/settings';
@@ -71,8 +71,11 @@ export default function RootLayout() {
             headerShown: false,
             contentStyle: { backgroundColor: Colors.background },
             animation: 'fade',
+            animationDuration: Motion.screen,
           }}
-        />
+        >
+          <Stack.Screen name="add-contact" options={{ animationDuration: Motion.screen }} />
+        </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

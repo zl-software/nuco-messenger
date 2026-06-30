@@ -22,6 +22,7 @@ import { Colors, Fonts, Overlay, Radius, Spacing } from '@/constants/theme';
 import { conversationPreviews } from '@/db/repos/messages';
 import { getContact, type Contact } from '@/db/repos/contacts';
 import { getConversation } from '@/db/repos/conversations';
+import { isDbOpen } from '@/db/client';
 
 interface ChatRow {
   contact: Contact;
@@ -55,22 +56,31 @@ export default function ChatsScreen() {
   const [query, setQuery] = useState('');
 
   const load = useCallback(async () => {
-    const previews = await conversationPreviews();
-    const built: ChatRow[] = [];
-    for (const preview of previews) {
-      const contact = await getContact(preview.conversationId);
-      if (!contact) continue;
-      const convo = await getConversation(preview.conversationId);
-      built.push({
-        contact,
-        body: preview.body,
-        sentAt: preview.sentAt,
-        direction: preview.direction,
-        unread: preview.unread,
-        retentionSeconds: convo?.retentionSeconds ?? 86400,
-      });
+    if (!isDbOpen()) {
+      setRows([]);
+      return;
     }
-    setRows(built);
+    try {
+      const previews = await conversationPreviews();
+      const built: ChatRow[] = [];
+      for (const preview of previews) {
+        const contact = await getContact(preview.conversationId);
+        if (!contact) continue;
+        const convo = await getConversation(preview.conversationId);
+        built.push({
+          contact,
+          body: preview.body,
+          sentAt: preview.sentAt,
+          direction: preview.direction,
+          unread: preview.unread,
+          retentionSeconds: convo?.retentionSeconds ?? 86400,
+        });
+      }
+      setRows(built);
+    } catch {
+      // The database can close under us (lock, dev reload). Render empty rather than throw.
+      setRows([]);
+    }
   }, []);
 
   useFocusEffect(
@@ -110,7 +120,7 @@ export default function ChatsScreen() {
 
   if (rows.length === 0) {
     return (
-      <Screen contentStyle={styles.screen}>
+      <Screen contentStyle={styles.screen} edges={['top']}>
         {header}
         <View style={styles.empty}>
           <View style={styles.emptyTile}>
@@ -199,7 +209,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: Spacing.md,
+    paddingTop: Spacing.sm,
     paddingBottom: Spacing.lg,
   },
   headerActions: { flexDirection: 'row', gap: Spacing.sm },

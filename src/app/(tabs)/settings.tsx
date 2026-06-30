@@ -3,11 +3,13 @@
 
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { Colors, Overlay, Radius, Spacing } from '@/constants/theme';
 import {
+  BottomSheet,
   Button,
   Card,
   ChevronRight,
@@ -20,6 +22,7 @@ import { useSession } from '@/state/session';
 import { useSettings } from '@/state/settings';
 import { formatFingerprint } from '@/services/onboarding';
 import { healthUrlFor, resolveServerUrl } from '@/services/server';
+import { reconnectRelay } from '@/services/boot';
 import type { Prefs } from '@/services/prefs';
 import type { LanguageSetting } from '@/i18n';
 import { lock } from '@/lock/lock-controller';
@@ -43,22 +46,18 @@ const LANGUAGE_OPTIONS: { key: LanguageSetting; label?: string }[] = [
 export default function SettingsScreen() {
   const { t } = useTranslation();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const account = useSession((s) => s.account);
   const settings = useSettings();
   const update = useSettings((s) => s.update);
 
   const [conn, setConn] = useState<ConnState>('idle');
+  const [autoLockSheet, setAutoLockSheet] = useState(false);
 
   const fingerprint = account ? formatFingerprint(account.identityKeyB64) : '';
 
   const currentAutoLock =
     AUTO_LOCK_OPTIONS.find((o) => o.ms === settings.autoLockMs) ?? AUTO_LOCK_OPTIONS[2];
-
-  function cycleAutoLock() {
-    const idx = AUTO_LOCK_OPTIONS.findIndex((o) => o.ms === settings.autoLockMs);
-    const next = AUTO_LOCK_OPTIONS[(idx + 1) % AUTO_LOCK_OPTIONS.length];
-    void update({ autoLockMs: next.ms });
-  }
 
   async function testConnection() {
     setConn('testing');
@@ -67,6 +66,9 @@ export default function SettingsScreen() {
     try {
       const res = await fetch(url);
       setConn(res.ok ? 'connected' : 'offline');
+      // The health probe is just HTTP; point the live relay socket at this server too, so the
+      // app actually talks to it (otherwise the socket keeps the URL it had at unlock).
+      if (res.ok) void reconnectRelay();
     } catch {
       setConn('offline');
     }
@@ -94,15 +96,18 @@ export default function SettingsScreen() {
   }
 
   return (
-    <ScrollView
-      style={styles.root}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-    >
-      <Text variant="display" color="text" style={styles.title}>
-        {t('settings.title')}
-      </Text>
-
+    <>
+    <View style={styles.root}>
+      <View style={[styles.headerBar, { paddingTop: insets.top + Spacing.sm }]}>
+        <Text variant="display" color="text">
+          {t('settings.title')}
+        </Text>
+      </View>
+      <ScrollView
+        style={styles.root}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
       {/* IDENTITY */}
       <Text variant="eyebrow" color="textTertiary" style={styles.eyebrow}>
         {t('settings.identity')}
@@ -134,7 +139,7 @@ export default function SettingsScreen() {
         <NavRow
           label={t('settings.autoLock')}
           value={t(currentAutoLock.key)}
-          onPress={cycleAutoLock}
+          onPress={() => setAutoLockSheet(true)}
         />
         <Divider />
         <ToggleRow
@@ -157,7 +162,10 @@ export default function SettingsScreen() {
           value={settings.serverMode}
           onChange={(key) => {
             setConn('idle');
-            void update({ serverMode: key as Prefs['serverMode'] });
+            void (async () => {
+              await update({ serverMode: key as Prefs['serverMode'] });
+              await reconnectRelay();
+            })();
           }}
         />
         {settings.serverMode === 'custom' ? (
@@ -216,19 +224,15 @@ export default function SettingsScreen() {
           <Text variant="rowTitle" color="text">
             {t('settings.language')}
           </Text>
-          <View style={styles.langRow}>
-            {LANGUAGE_OPTIONS.map((opt) => {
-              const selected = settings.language === opt.key;
-              return (
-                <Button
-                  key={opt.key}
-                  label={opt.label ?? t('settings.languageFollowSystem')}
-                  variant={selected ? 'primary' : 'ghost'}
-                  style={styles.langChip}
-                  onPress={() => void update({ language: opt.key })}
-                />
-              );
-            })}
+          <View style={styles.langControl}>
+            <SegmentedControl
+              options={LANGUAGE_OPTIONS.map((opt) => ({
+                key: opt.key,
+                label: opt.label ?? t('settings.languageSystem'),
+              }))}
+              value={settings.language}
+              onChange={(key) => void update({ language: key as LanguageSetting })}
+            />
           </View>
         </View>
         <Divider />
@@ -282,7 +286,34 @@ export default function SettingsScreen() {
           onPress={confirmWipe}
         />
       </Card>
-    </ScrollView>
+      </ScrollView>
+    </View>
+
+    <BottomSheet
+      visible={autoLockSheet}
+      title={t('settings.autoLock')}
+      onClose={() => setAutoLockSheet(false)}
+    >
+      {AUTO_LOCK_OPTIONS.map((option) => {
+        const selected = settings.autoLockMs === option.ms;
+        return (
+          <Pressable
+            key={option.ms}
+            style={({ pressed }) => [styles.sheetRow, pressed ? styles.rowPressed : null]}
+            onPress={() => {
+              void update({ autoLockMs: option.ms });
+              setAutoLockSheet(false);
+            }}
+          >
+            <Text variant="rowTitle" color={selected ? 'accent' : 'text'}>
+              {t(option.key)}
+            </Text>
+            {selected ? <Text style={styles.sheetCheck}>{'✓'}</Text> : null}
+          </Pressable>
+        );
+      })}
+    </BottomSheet>
+    </>
   );
 }
 
@@ -353,12 +384,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   content: {
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.xxl,
+    paddingHorizontal: Spacing.xl,
     paddingBottom: Spacing.huge,
   },
-  title: {
-    marginBottom: Spacing.lg,
+  headerBar: {
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: Spacing.lg,
+    backgroundColor: Colors.background,
   },
   eyebrow: {
     marginTop: Spacing.xl,
@@ -409,13 +441,18 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: Radius.pill,
   },
-  langRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.xs,
+  langControl: {
+    marginTop: Spacing.xs,
   },
-  langChip: {
-    flexGrow: 1,
+  sheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 52,
+  },
+  sheetCheck: {
+    color: Colors.accent,
+    fontSize: 18,
   },
   dangerDetail: {
     marginBottom: Spacing.md,

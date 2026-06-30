@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
@@ -16,13 +16,18 @@ interface Strings {
   emoji: { emoji: string; name: string }[];
 }
 
+// Seconds the user must wait, after the codes appear, before they can confirm a match. Keeps
+// people from tapping through without actually comparing.
+const VERIFY_DELAY_SECONDS = 3;
+
 export default function VerifyScreen() {
   const { t } = useTranslation();
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
   const account = useSession((s) => s.account);
   const [contact, setContact] = useState<Contact | null>(null);
   const [strings, setStrings] = useState<Strings | null>(null);
+  const [countdown, setCountdown] = useState(VERIFY_DELAY_SECONDS);
 
   useEffect(() => {
     let active = true;
@@ -40,13 +45,36 @@ export default function VerifyScreen() {
     };
   }, [id, account]);
 
+  // Start the confirm countdown once the codes are on screen.
+  useEffect(() => {
+    if (!strings) return;
+    setCountdown(VERIFY_DELAY_SECONDS);
+    const interval = setInterval(() => {
+      setCountdown((c) => {
+        if (c <= 1) {
+          clearInterval(interval);
+          return 0;
+        }
+        return c - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [strings]);
+
   async function onMarkVerified() {
     if (!contact || !strings) return;
     await markVerified(contact.id, strings.safetyNumber);
-    router.back();
+    // Reached from a scan: drop the scanner and this screen, land on the contact, so going back
+    // returns to whatever preceded the scanner. Reached from the contact screen: just pop back.
+    if (from === 'scan') {
+      router.replace({ pathname: '/contact/[id]', params: { id: contact.id } });
+    } else {
+      router.back();
+    }
   }
 
   const name = contact?.displayName ?? '';
+  const canVerify = strings != null && countdown === 0;
 
   return (
     <Screen edges={['top', 'bottom']} contentStyle={styles.content}>
@@ -87,19 +115,31 @@ export default function VerifyScreen() {
               ))}
             </View>
           </Card>
-        ) : null}
+        ) : (
+          <View style={styles.loading}>
+            <ActivityIndicator color={Colors.accent} />
+          </View>
+        )}
+
+        <Text variant="bodySecondary" color="textSecondary" style={styles.mutualHint}>
+          {t('verification.mutualHint', { name })}
+        </Text>
 
         <Button
-          label={t('verification.scanToCompare')}
+          label={t('verification.showMyCode')}
           icon={<QrIcon size={18} color={Colors.accentInk} />}
-          onPress={() => router.push('/add-contact')}
+          onPress={() => router.push({ pathname: '/add-contact', params: { mode: 'show' } })}
           style={styles.primary}
         />
         <Button
-          label={t('verification.markVerified')}
+          label={
+            strings && countdown > 0
+              ? t('verification.markVerifiedCountdown', { seconds: countdown })
+              : t('verification.markVerified')
+          }
           variant="secondary"
           onPress={onMarkVerified}
-          disabled={!strings}
+          disabled={!canVerify}
         />
       </ScrollView>
     </Screen>
@@ -121,6 +161,7 @@ const styles = StyleSheet.create({
   body: { paddingHorizontal: Spacing.xl, paddingBottom: Spacing.huge },
   intro: { textAlign: 'center', marginVertical: Spacing.lg },
   card: { alignItems: 'center', marginBottom: Spacing.xl },
+  loading: { alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.huge, marginBottom: Spacing.xl },
   eyebrow: { marginBottom: Spacing.md },
   snRow: { fontSize: 19, letterSpacing: 2.3, lineHeight: 34, textAlign: 'center' },
   emojiRow: {
@@ -135,5 +176,6 @@ const styles = StyleSheet.create({
   },
   emojiItem: { alignItems: 'center', gap: 2 },
   emojiGlyph: { fontSize: 28 },
-  primary: { marginTop: Spacing.lg, marginBottom: Spacing.md },
+  mutualHint: { textAlign: 'center', marginBottom: Spacing.md },
+  primary: { marginTop: Spacing.xs, marginBottom: Spacing.md },
 });

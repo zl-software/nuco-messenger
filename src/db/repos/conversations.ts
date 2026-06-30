@@ -8,6 +8,7 @@ export interface Conversation {
   retentionSeconds: number;
   retentionPending: boolean;
   retentionPendingValue: number | null;
+  retentionPendingIncoming: boolean;
   muted: boolean;
   createdAt: number;
 }
@@ -18,6 +19,7 @@ interface ConversationRow {
   retention_seconds: number;
   retention_pending: number;
   retention_pending_value: number | null;
+  retention_pending_incoming: number;
   muted: number;
   created_at: number;
 }
@@ -29,6 +31,7 @@ function toConversation(r: ConversationRow): Conversation {
     retentionSeconds: r.retention_seconds,
     retentionPending: r.retention_pending === 1,
     retentionPendingValue: r.retention_pending_value,
+    retentionPendingIncoming: r.retention_pending_incoming === 1,
     muted: r.muted === 1,
     createdAt: r.created_at,
   };
@@ -48,25 +51,42 @@ export async function ensureConversation(id: string, contactId: string, retentio
   const existing = await getConversationByContact(contactId);
   if (existing) return existing;
   await getDb().execute(
-    'INSERT INTO conversations (id, contact_id, retention_seconds, retention_pending, retention_pending_value, muted, created_at) VALUES (?, ?, ?, 0, NULL, 0, ?)',
+    'INSERT INTO conversations (id, contact_id, retention_seconds, retention_pending, retention_pending_value, retention_pending_incoming, muted, created_at) VALUES (?, ?, ?, 0, NULL, 0, 0, ?)',
     [id, contactId, retentionSeconds, now],
   );
-  return { id, contactId, retentionSeconds, retentionPending: false, retentionPendingValue: null, muted: false, createdAt: now };
+  return {
+    id,
+    contactId,
+    retentionSeconds,
+    retentionPending: false,
+    retentionPendingValue: null,
+    retentionPendingIncoming: false,
+    muted: false,
+    createdAt: now,
+  };
 }
 
 export async function setRetention(id: string, seconds: number): Promise<void> {
-  await getDb().execute('UPDATE conversations SET retention_seconds = ?, retention_pending = 0, retention_pending_value = NULL WHERE id = ?', [
-    seconds,
-    id,
-  ]);
+  await getDb().execute(
+    'UPDATE conversations SET retention_seconds = ?, retention_pending = 0, retention_pending_value = NULL, retention_pending_incoming = 0 WHERE id = ?',
+    [seconds, id],
+  );
 }
 
-export async function setRetentionPending(id: string, pendingValue: number): Promise<void> {
-  await getDb().execute('UPDATE conversations SET retention_pending = 1, retention_pending_value = ? WHERE id = ?', [pendingValue, id]);
+// A pending retention change. `incoming` is true when the peer requested it (we accept or
+// decline), false when we requested it (we wait or cancel).
+export async function setRetentionPending(id: string, pendingValue: number, incoming: boolean): Promise<void> {
+  await getDb().execute(
+    'UPDATE conversations SET retention_pending = 1, retention_pending_value = ?, retention_pending_incoming = ? WHERE id = ?',
+    [pendingValue, incoming ? 1 : 0, id],
+  );
 }
 
 export async function clearRetentionPending(id: string): Promise<void> {
-  await getDb().execute('UPDATE conversations SET retention_pending = 0, retention_pending_value = NULL WHERE id = ?', [id]);
+  await getDb().execute(
+    'UPDATE conversations SET retention_pending = 0, retention_pending_value = NULL, retention_pending_incoming = 0 WHERE id = ?',
+    [id],
+  );
 }
 
 export async function setConversationMuted(id: string, muted: boolean): Promise<void> {

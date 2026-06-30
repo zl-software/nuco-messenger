@@ -117,18 +117,24 @@ export default function ConversationScreen() {
         <Pressable onPress={() => router.back()} hitSlop={8} style={styles.backBtn}>
           <ChevronLeft size={24} color={Colors.text} />
         </Pressable>
-        <Avatar name={contact.displayName} size={40} unverified={!verified} />
-        <View style={styles.headerText}>
-          <View style={styles.nameWrap}>
-            <Text variant="rowTitle" color="text" numberOfLines={1}>
-              {contact.displayName}
+        <Pressable
+          onPress={() => router.push({ pathname: '/contact/[id]', params: { id: contact.id } })}
+          style={({ pressed }) => [styles.headerInfo, pressed ? styles.headerInfoPressed : null]}
+          hitSlop={4}
+        >
+          <Avatar name={contact.displayName} size={40} unverified={!verified} />
+          <View style={styles.headerText}>
+            <View style={styles.nameWrap}>
+              <Text variant="rowTitle" color="text" numberOfLines={1}>
+                {contact.displayName}
+              </Text>
+              {verified ? <VerifiedShield size={14} color={Colors.accent} /> : null}
+            </View>
+            <Text variant="monoCaption" color="textSecondary">
+              {subtitle}
             </Text>
-            {verified ? <VerifiedShield size={14} color={Colors.accent} /> : null}
           </View>
-          <Text variant="monoCaption" color="textSecondary">
-            {subtitle}
-          </Text>
-        </View>
+        </Pressable>
       </View>
 
       <Card tone="accent" style={styles.banner}>
@@ -229,6 +235,8 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.md,
   },
   backBtn: { padding: Spacing.xs, marginLeft: -Spacing.xs },
+  headerInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  headerInfoPressed: { opacity: 0.6 },
   headerText: { flex: 1, gap: 2 },
   nameWrap: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
   banner: { paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md, marginBottom: Spacing.sm },

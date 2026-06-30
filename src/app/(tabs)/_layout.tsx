@@ -1,12 +1,13 @@
 // The three tab navigation: Chats, Contacts, Settings, with an accent active state matching
 // the design.
 
-import { Tabs } from 'expo-router';
+import { Redirect, Tabs } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
 
 import { Colors, Overlay } from '@/constants/theme';
+import { useSession } from '@/state/session';
 
 function ChatsIcon({ color }: { color: string }) {
   return (
@@ -34,6 +35,13 @@ function SettingsIcon({ color }: { color: string }) {
 
 export default function TabsLayout() {
   const { t } = useTranslation();
+  const lockStatus = useSession((s) => s.lockStatus);
+
+  // The tabs read the encrypted database. If the key has been released (auto-lock, or a dev
+  // reload that reset in memory state), send the user back to unlock instead of letting the
+  // screens query a closed database.
+  if (lockStatus !== 'unlocked') return <Redirect href="/lock" />;
+
   return (
     <Tabs
       screenOptions={{

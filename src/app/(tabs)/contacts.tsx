@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 
 import { Avatar, ChevronRight, Pill, Plus, Screen, Text, TextField, VerifiedShield } from '@/ui';
 import { listContacts, type Contact } from '@/db/repos/contacts';
+import { isDbOpen } from '@/db/client';
 import { Colors, Radius, Spacing, accentGlow } from '@/constants/theme';
 
 export default function ContactsScreen() {
@@ -16,9 +17,18 @@ export default function ContactsScreen() {
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      void listContacts().then((rows) => {
-        if (active) setContacts(rows);
-      });
+      if (!isDbOpen()) {
+        setContacts([]);
+        return;
+      }
+      listContacts()
+        .then((rows) => {
+          if (active) setContacts(rows);
+        })
+        .catch(() => {
+          // The database can close under us (lock, dev reload). Render empty rather than throw.
+          if (active) setContacts([]);
+        });
       return () => {
         active = false;
       };
@@ -155,7 +165,7 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: Spacing.xl,
-    bottom: Spacing.xl,
+    bottom: Spacing.xxxl + Spacing.xs,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,

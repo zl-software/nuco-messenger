@@ -64,10 +64,7 @@ export default function KeygenScreen() {
             </View>
           ) : (
             <View style={styles.spinnerWrap}>
-              <ActivityIndicator size="large" color={Colors.accent} />
-              <View style={styles.markCenter}>
-                <NucoMark size={36} color={Colors.accent} />
-              </View>
+              <NucoMark size={56} color={Colors.accent} />
             </View>
           )}
         </View>
@@ -154,7 +151,6 @@ const styles = StyleSheet.create({
   body: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: Spacing.lg },
   medallion: { width: 104, height: 104, alignItems: 'center', justifyContent: 'center' },
   spinnerWrap: { width: 104, height: 104, alignItems: 'center', justifyContent: 'center' },
-  markCenter: { position: 'absolute' },
   successCircle: { width: 96, height: 96, borderRadius: 48, backgroundColor: Colors.accent, alignItems: 'center', justifyContent: 'center' },
   title: { textAlign: 'center', marginTop: Spacing.sm },
   subtitle: { textAlign: 'center', maxWidth: 320 },

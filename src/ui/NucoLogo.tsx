@@ -40,6 +40,7 @@ export function NucoLockup({ size = 38 }: { size?: number }) {
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 13 },
-  word: { fontFamily: Fonts.extrabold, fontSize: 30, letterSpacing: -0.9, color: Colors.text },
-  tag: { fontFamily: Fonts.monoMedium, fontSize: 11, letterSpacing: 3.3, color: Colors.textSecondary, marginTop: 2 },
+  // Explicit lineHeight (and no font padding) or iOS/Hermes clips the top of the wordmark glyphs.
+  word: { fontFamily: Fonts.extrabold, fontSize: 30, lineHeight: 38, letterSpacing: -0.9, color: Colors.text, includeFontPadding: false },
+  tag: { fontFamily: Fonts.monoMedium, fontSize: 11, lineHeight: 14, letterSpacing: 3.3, color: Colors.textSecondary, marginTop: 2, includeFontPadding: false },
 });

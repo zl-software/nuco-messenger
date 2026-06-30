@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import QRCode from 'react-native-qrcode-svg';
@@ -13,13 +13,21 @@ import { CONTACT_CARD_VERSION, type ContactCard } from '@nuco/protocol';
 import { Colors, Overlay, Radius, Spacing } from '@/constants/theme';
 
 type Mode = 'show' | 'scan';
-type ScanError = 'invalid' | 'notNuco' | null;
+type ScanError = 'invalid' | 'notNuco' | 'offline' | 'mismatch' | null;
+
+const SCAN_ERROR_COPY = {
+  invalid: { tone: 'danger', title: 'addContact.invalidTitle', body: 'addContact.invalidBody', cta: 'addContact.tryAgain' },
+  notNuco: { tone: 'warning', title: 'addContact.notNucoTitle', body: 'addContact.notNucoBody', cta: 'addContact.scanNuco' },
+  offline: { tone: 'warning', title: 'addContact.offlineTitle', body: 'addContact.offlineBody', cta: 'addContact.tryAgain' },
+  mismatch: { tone: 'danger', title: 'addContact.mismatchTitle', body: 'addContact.mismatchBody', cta: 'addContact.tryAgain' },
+} as const;
 
 export default function AddContactScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const account = useSession((s) => s.account);
-  const [mode, setMode] = useState<Mode>('show');
+  const { mode: initialMode } = useLocalSearchParams<{ mode?: Mode }>();
+  const [mode, setMode] = useState<Mode>(initialMode === 'scan' ? 'scan' : 'show');
 
   return (
     <Screen edges={['top', 'bottom']} contentStyle={styles.content}>
@@ -46,7 +54,7 @@ export default function AddContactScreen() {
         <ShowCode card={account ? buildCard(account) : null} />
       ) : (
         <ScanCode
-          onAdded={(id) => router.push({ pathname: '/verify/[id]', params: { id } })}
+          onAdded={(id) => router.replace({ pathname: '/verify/[id]', params: { id, from: 'scan' } })}
           onShowInstead={() => setMode('show')}
         />
       )}
@@ -92,31 +100,48 @@ function ScanCode({ onAdded, onShowInstead }: { onAdded: (id: string) => void; o
   const { t } = useTranslation();
   const [permission, requestPermission] = useCameraPermissions();
   const [error, setError] = useState<ScanError>(null);
+  const [adding, setAdding] = useState(false);
+  const [focus, setFocus] = useState<'on' | 'off'>('on');
   const handlingRef = useRef(false);
 
   async function onBarcode(data: string) {
     if (handlingRef.current) return;
     handlingRef.current = true;
-    const parsed = parseScannedCode(data);
-    if (parsed === 'notNuco') {
-      setError('notNuco');
-      return;
-    }
-    if (parsed === 'invalid') {
+    setAdding(true);
+    try {
+      const parsed = parseScannedCode(data);
+      if (parsed === 'notNuco') {
+        setError('notNuco');
+        return;
+      }
+      if (parsed === 'invalid') {
+        setError('invalid');
+        return;
+      }
+      const outcome = await addContactFromCard(parsed);
+      if (outcome.kind === 'added') {
+        onAdded(outcome.contact.id);
+        return;
+      }
+      setError(outcome.kind);
+    } catch {
+      // Never leave the scan hanging silently (e.g. the relay is unreachable): surface an error.
       setError('invalid');
-      return;
+    } finally {
+      setAdding(false);
     }
-    const outcome = await addContactFromCard(parsed);
-    if (outcome.kind === 'added') {
-      onAdded(outcome.contact.id);
-      return;
-    }
-    setError(outcome.kind === 'notNuco' ? 'notNuco' : 'invalid');
   }
 
   function resetScan() {
     setError(null);
     handlingRef.current = false;
+  }
+
+  // expo-camera exposes no focus point API, so tap to refocus by briefly dropping and re-arming
+  // autofocus. This makes the lens re-acquire on the QR, which dense codes need to decode.
+  function refocus() {
+    setFocus('off');
+    setTimeout(() => setFocus('on'), 120);
   }
 
   if (!permission) return <View style={styles.scanWrap} />;
@@ -142,37 +167,45 @@ function ScanCode({ onAdded, onShowInstead }: { onAdded: (id: string) => void; o
 
   return (
     <View style={styles.scanWrap}>
-      <CameraView
-        style={StyleSheet.absoluteFill}
-        barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-        onBarcodeScanned={({ data }) => void onBarcode(data)}
-      />
-      <View style={styles.scanOverlay} pointerEvents="box-none">
-        <View style={styles.reticle} />
-        <Card style={styles.scanHint}>
-          <Text variant="rowTitle" style={styles.scanHintTitle}>
-            {t('addContact.scanHint')}
-          </Text>
-          <Text variant="caption" color="textSecondary" style={styles.scanHintCaption}>
-            {t('addContact.scanCaption')}
-          </Text>
-        </Card>
-      </View>
+      <Pressable style={StyleSheet.absoluteFill} onPress={refocus}>
+        <CameraView
+          style={StyleSheet.absoluteFill}
+          facing="back"
+          autofocus={focus}
+          barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+          onBarcodeScanned={({ data }) => void onBarcode(data)}
+        />
+      </Pressable>
+      {!error ? (
+        <View style={styles.scanOverlay} pointerEvents="none">
+          <View style={styles.reticle} />
+          <Card style={styles.scanHint}>
+            <Text variant="rowTitle" style={styles.scanHintTitle}>
+              {t('addContact.scanHint')}
+            </Text>
+            <Text variant="caption" color="textSecondary" style={styles.scanHintCaption}>
+              {t('addContact.scanCaption')}
+            </Text>
+          </Card>
+        </View>
+      ) : null}
+
+      {adding && !error ? (
+        <View style={styles.scanBusy} pointerEvents="none">
+          <ActivityIndicator color={Colors.accent} />
+        </View>
+      ) : null}
 
       {error ? (
         <View style={styles.errorOverlay}>
-          <Card tone={error === 'notNuco' ? 'warning' : 'danger'} style={styles.errorCard}>
+          <Card tone={SCAN_ERROR_COPY[error].tone} style={styles.errorCard}>
             <Text variant="rowTitle" style={styles.errorTitle}>
-              {error === 'notNuco' ? t('addContact.notNucoTitle') : t('addContact.invalidTitle')}
+              {t(SCAN_ERROR_COPY[error].title)}
             </Text>
             <Text variant="bodySecondary" color="textSecondary" style={styles.errorBody}>
-              {error === 'notNuco' ? t('addContact.notNucoBody') : t('addContact.invalidBody')}
+              {t(SCAN_ERROR_COPY[error].body)}
             </Text>
-            <Button
-              label={error === 'notNuco' ? t('addContact.scanNuco') : t('addContact.tryAgain')}
-              variant="secondary"
-              onPress={resetScan}
-            />
+            <Button label={t(SCAN_ERROR_COPY[error].cta)} variant="secondary" onPress={resetScan} />
           </Card>
         </View>
       ) : null}
@@ -228,6 +261,7 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: Colors.accent,
   },
+  scanBusy: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   scanHint: { position: 'absolute', left: Spacing.lg, right: Spacing.lg, bottom: Spacing.xl, alignItems: 'center' },
   scanHintTitle: { textAlign: 'center' },
   scanHintCaption: { textAlign: 'center', marginTop: Spacing.xs },
@@ -237,8 +271,11 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
     padding: Spacing.lg,
+    // Dim the camera and hint behind the card so the message is legible (the card tone is a
+    // translucent tint and read poorly over the live preview).
+    backgroundColor: 'rgba(8,9,12,0.92)',
   },
   errorCard: { gap: Spacing.md },
   errorTitle: {},

@@ -42,12 +42,14 @@ export function Avatar({ name, size = 52, unverified = false }: AvatarProps) {
       end={{ x: 0.9, y: 1 }}
       style={[styles.avatar, { width: size, height: size, borderRadius: size / 2 }]}
     >
-      <Text style={[styles.initials, { color: preset.text, fontSize: size * 0.36 }]}>{initials(name)}</Text>
+      <Text style={[styles.initials, { color: preset.text, fontSize: size * 0.36, lineHeight: size * 0.42 }]}>
+        {initials(name)}
+      </Text>
     </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   avatar: { alignItems: 'center', justifyContent: 'center' },
-  initials: { fontFamily: Fonts.semibold },
+  initials: { fontFamily: Fonts.semibold, textAlign: 'center', includeFontPadding: false },
 });

@@ -84,6 +84,35 @@ export async function provisionAccount(displayName: string): Promise<{ account: 
   };
 }
 
+const PREKEY_CURSOR_KEY = 'prekeyCursor';
+
+interface PreKeyCursor {
+  nextSignedId: number;
+  nextOneTimeId: number;
+}
+
+// Rebuild a fresh prekey batch, persist the private parts into the encrypted store, and return
+// the public upload for the relay. Used to (re)publish to a relay that holds none of our keys
+// (self hosted or reset). Each batch uses fresh ids past a persisted cursor, so prekeys from
+// earlier batches stay valid for any in flight sessions. Returns null if there is no identity.
+export async function generatePreKeyUpload(): Promise<PreKeyUpload | null> {
+  const store = new NucoSignalStore(new SqliteSignalBackend());
+  const identityKeyPair = await store.getIdentityKeyPair();
+  if (!identityKeyPair) return null;
+  const cursor = (await getMetaJson<PreKeyCursor>(PREKEY_CURSOR_KEY)) ?? {
+    nextSignedId: 2,
+    nextOneTimeId: ONE_TIME_PREKEY_COUNT + 1,
+  };
+  const pre = await generatePreKeys(identityKeyPair, cursor.nextSignedId, cursor.nextOneTimeId, ONE_TIME_PREKEY_COUNT);
+  await store.storeSignedPreKey(pre.signedPreKey.keyId, pre.signedPreKey.keyPair);
+  for (const k of pre.oneTimePreKeys) await store.storePreKey(k.keyId, k.keyPair);
+  await setMetaJson(PREKEY_CURSOR_KEY, {
+    nextSignedId: cursor.nextSignedId + 1,
+    nextOneTimeId: cursor.nextOneTimeId + ONE_TIME_PREKEY_COUNT,
+  });
+  return toUploadBundle(pre);
+}
+
 export async function loadAccount(): Promise<Account | null> {
   const stored = await getMetaJson<StoredAccount>('account');
   if (!stored) return null;
