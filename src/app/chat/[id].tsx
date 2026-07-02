@@ -246,9 +246,13 @@ const styles = StyleSheet.create({
   bubbleRowOut: { justifyContent: 'flex-end' },
   bubbleRowIn: { justifyContent: 'flex-start' },
   bubbleWrapOut: { maxWidth: '80%', alignItems: 'flex-end', gap: Spacing.xxs },
-  bubble: { maxWidth: '80%', paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, borderRadius: Radius.bubble },
+  // No maxWidth on the shared bubble: a percentage would resolve against the auto sized
+  // outgoing wrap (whose width can collapse toward the short status caption) and squeeze
+  // short messages into wrapping. The cap lives on the wrap (out) and on bubbleIn (in),
+  // both of which have definite width parents.
+  bubble: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, borderRadius: Radius.bubble },
   bubbleOut: { borderBottomRightRadius: Radius.bubbleTail },
-  bubbleIn: { backgroundColor: Colors.surface2, borderBottomLeftRadius: Radius.bubbleTail },
+  bubbleIn: { maxWidth: '80%', backgroundColor: Colors.surface2, borderBottomLeftRadius: Radius.bubbleTail },
   outText: { color: Colors.outgoingText },
   statusText: { marginRight: Spacing.xs },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.md, paddingHorizontal: Spacing.lg },
