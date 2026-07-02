@@ -27,6 +27,7 @@ import type { Prefs } from '@/services/prefs';
 import type { LanguageSetting } from '@/i18n';
 import { lock } from '@/lock/lock-controller';
 import { wipeSecrets } from '@/crypto/secure-storage';
+import { deleteAccount } from '@/services/account-delete';
 
 type ConnState = 'idle' | 'testing' | 'connected' | 'offline';
 
@@ -53,6 +54,7 @@ export default function SettingsScreen() {
 
   const [conn, setConn] = useState<ConnState>('idle');
   const [autoLockSheet, setAutoLockSheet] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const fingerprint = account ? formatFingerprint(account.identityKeyB64) : '';
 
@@ -87,6 +89,29 @@ export default function SettingsScreen() {
             void (async () => {
               await wipeSecrets();
               await lock();
+            })();
+          },
+        },
+      ],
+      { cancelable: true },
+    );
+  }
+
+  function confirmDeleteAccount() {
+    Alert.alert(
+      t('settings.deleteConfirmTitle'),
+      t('settings.deleteConfirmBody'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('settings.deleteAccount'),
+          style: 'destructive',
+          onPress: () => {
+            if (deleting) return;
+            setDeleting(true);
+            void (async () => {
+              await deleteAccount();
+              router.replace('/(onboarding)/welcome');
             })();
           },
         },
@@ -284,6 +309,16 @@ export default function SettingsScreen() {
           label={t('settings.wipeData')}
           variant="destructive"
           onPress={confirmWipe}
+          disabled={deleting}
+        />
+        <Text variant="bodySecondary" color="textSecondary" style={styles.dangerDetailSpaced}>
+          {t('settings.deleteAccountDetail')}
+        </Text>
+        <Button
+          label={t('settings.deleteAccount')}
+          variant="destructive"
+          onPress={confirmDeleteAccount}
+          loading={deleting}
         />
       </Card>
       </ScrollView>
@@ -455,6 +490,10 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   dangerDetail: {
+    marginBottom: Spacing.md,
+  },
+  dangerDetailSpaced: {
+    marginTop: Spacing.lg,
     marginBottom: Spacing.md,
   },
 });

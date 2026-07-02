@@ -168,6 +168,13 @@ export class RelayClient {
     await this.request((rid) => ({ type: 'register', rid, ...params }));
   }
 
+  // Delete this account and all of its server side data. Bounded wait so account deletion can
+  // proceed with the local wipe even if the relay is momentarily slow.
+  async deregister(timeoutMs = 8000): Promise<void> {
+    await this.ensureReady(timeoutMs);
+    await this.request((rid) => ({ type: 'deregister', rid }));
+  }
+
   // Hand a sealed envelope to the relay. Resolves when the relay accepts it; queued while
   // offline and flushed on reconnect.
   sendEnvelope(to: string, envelope: MessageEnvelope): Promise<void> {
