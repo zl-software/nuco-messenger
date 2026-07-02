@@ -4,6 +4,7 @@
 
 import { loadAccount, registerParamsFor, generatePreKeyUpload, type Account } from './account';
 import { startRelay, stopRelay, setOnDeliver, setOnRelayStatus, getRelay } from './relay';
+import { emitConversationsChanged } from './data-events';
 import { receiveEnvelope } from './messaging';
 import { resolveServerUrl } from './server';
 import { loadPrefs } from './prefs';
@@ -57,7 +58,7 @@ export async function bringOnline(): Promise<void> {
   // handle, and authentication fails without a registration, leaving the socket disconnected.
   startRelay(resolveServerUrl(prefs), account, registerParamsFor(account, { kind: 'none' }));
   void ensurePreKeysPublished();
-  await sweepExpired(Date.now());
+  if ((await sweepExpired(Date.now())) > 0) emitConversationsChanged();
   void registerPush();
 }
 

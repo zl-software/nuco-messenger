@@ -1,7 +1,7 @@
 // The chats list: a searchable list of conversation previews joined with their contact, with
 // verification, retention, and unread affordances. Reloads on focus.
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -23,6 +23,7 @@ import { conversationPreviews } from '@/db/repos/messages';
 import { getContact, type Contact } from '@/db/repos/contacts';
 import { getConversation } from '@/db/repos/conversations';
 import { isDbOpen } from '@/db/client';
+import { subscribeConversationsChanged } from '@/services/data-events';
 
 interface ChatRow {
   contact: Contact;
@@ -83,10 +84,32 @@ export default function ChatsScreen() {
     }
   }, []);
 
+  // Coalesce event bursts (e.g. the relay flushing a backlog after reconnect) and keep
+  // loads serialized so an older result can never overwrite a newer one: one load in
+  // flight, at most one queued rerun.
+  const loading = useRef(false);
+  const dirty = useRef(false);
+  const scheduleLoad = useCallback(async () => {
+    if (loading.current) {
+      dirty.current = true;
+      return;
+    }
+    loading.current = true;
+    do {
+      dirty.current = false;
+      await load();
+    } while (dirty.current);
+    loading.current = false;
+  }, [load]);
+
+  // The tab stays mounted behind pushed screens, so a mount lifetime subscription keeps
+  // the list current without waiting for a refocus.
+  useEffect(() => subscribeConversationsChanged(() => void scheduleLoad()), [scheduleLoad]);
+
   useFocusEffect(
     useCallback(() => {
-      void load();
-    }, [load]),
+      void scheduleLoad();
+    }, [scheduleLoad]),
   );
 
   const filtered = useMemo(() => {

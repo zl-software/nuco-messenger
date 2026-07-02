@@ -14,8 +14,9 @@ import {
   setRetentionPending,
   clearRetentionPending,
 } from '@/db/repos/conversations';
-import { insertMessage, updateMessageStatus } from '@/db/repos/messages';
+import { insertMessage, markConversationRead, updateMessageStatus } from '@/db/repos/messages';
 import { getSignal } from './account';
+import { emitConversationsChanged } from './data-events';
 import { getRelay } from './relay';
 
 function expiryFor(retentionSeconds: number, now: number): number | null {
@@ -46,21 +47,37 @@ export async function sendText(contact: { id: string; handle: string }, text: st
     expiresAt: expiryFor(retentionSeconds, now),
     read: true,
   });
+  emitConversationsChanged(contact.id);
   try {
     await sendContent(contact.handle, { t: 'text', body: text }, id);
     await updateMessageStatus(id, 'sent');
   } catch {
     await updateMessageStatus(id, 'failed');
   }
+  emitConversationsChanged(contact.id);
 }
 
 export async function retrySend(messageId: string, contact: { handle: string }, text: string): Promise<void> {
   await updateMessageStatus(messageId, 'sending');
+  emitConversationsChanged();
   try {
     await sendContent(contact.handle, { t: 'text', body: text }, messageId);
     await updateMessageStatus(messageId, 'sent');
   } catch {
     await updateMessageStatus(messageId, 'failed');
+  }
+  emitConversationsChanged();
+}
+
+// Mark all incoming messages in a conversation read and notify listeners only when
+// something actually changed. Safe to call redundantly (events, focus, poll) and while
+// the db is locked (no-op).
+export async function markRead(conversationId: string): Promise<void> {
+  try {
+    const changed = await markConversationRead(conversationId);
+    if (changed > 0) emitConversationsChanged(conversationId);
+  } catch {
+    // The db can close under the UI (app lock); the next focus re-marks.
   }
 }
 
@@ -80,11 +97,13 @@ async function sendControl(handle: string, content: MessageContent): Promise<voi
 
 export async function requestRetention(contact: { id: string; handle: string }, value: number): Promise<void> {
   await setRetentionPending(contact.id, value, false);
+  emitConversationsChanged(contact.id);
   await sendControl(contact.handle, { t: 'retention/request', value });
 }
 
 export async function acceptRetention(contact: { id: string; handle: string }, value: number): Promise<void> {
   await setRetention(contact.id, value);
+  emitConversationsChanged(contact.id);
   await sendControl(contact.handle, { t: 'retention/accept', value });
 }
 
@@ -92,6 +111,7 @@ export async function acceptRetention(contact: { id: string; handle: string }, v
 // declines an incoming one: in both cases the peer should drop the pending change.
 export async function cancelRetention(contact: { id: string; handle: string }): Promise<void> {
   await clearRetentionPending(contact.id);
+  emitConversationsChanged(contact.id);
   await sendControl(contact.handle, { t: 'retention/cancel' });
 }
 
@@ -135,6 +155,7 @@ export async function receiveEnvelope(from: string, envelope: MessageEnvelope): 
         break;
     }
 
+    emitConversationsChanged(contact.id);
     relay?.ack(envelope.id);
     return contact.id;
   } catch {

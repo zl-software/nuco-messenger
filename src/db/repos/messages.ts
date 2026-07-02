@@ -58,8 +58,15 @@ export async function updateMessageStatus(id: string, status: MessageStatus): Pr
   await getDb().execute('UPDATE messages SET status = ? WHERE id = ?', [status, id]);
 }
 
-export async function markConversationRead(conversationId: string): Promise<void> {
-  await getDb().execute('UPDATE messages SET read = 1 WHERE conversation_id = ? AND direction = ?', [conversationId, 'in']);
+// Returns the number of rows actually flipped so callers can emit change events only when
+// something changed. The read = 0 predicate is what makes the count 0 on a second call
+// (SQLite counts processed rows even when the value is unchanged).
+export async function markConversationRead(conversationId: string): Promise<number> {
+  const result = await getDb().execute(
+    'UPDATE messages SET read = 1 WHERE conversation_id = ? AND direction = ? AND read = 0',
+    [conversationId, 'in'],
+  );
+  return result.rowsAffected ?? 0;
 }
 
 export interface ConversationPreview {

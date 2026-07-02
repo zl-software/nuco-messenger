@@ -21,8 +21,10 @@ import { Avatar, Card, ChevronLeft, Screen, SendArrow, Text, VerifiedShield } fr
 import { Colors, Fonts, Overlay, Radius, Spacing } from '@/constants/theme';
 import { getContact, type Contact } from '@/db/repos/contacts';
 import { getConversationByContact, type Conversation } from '@/db/repos/conversations';
-import { listMessages, markConversationRead, type Message } from '@/db/repos/messages';
-import { sendText } from '@/services/messaging';
+import { listMessages, type Message } from '@/db/repos/messages';
+import { isDbOpen } from '@/db/client';
+import { subscribeConversationsChanged } from '@/services/data-events';
+import { markRead, sendText } from '@/services/messaging';
 
 type RetentionKey = 'retention.optionOff' | 'retention.option24h' | 'retention.option7d' | 'retention.option30d';
 
@@ -63,15 +65,16 @@ export default function ConversationScreen() {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+  const focusedRef = useRef(false);
 
   const loadMessages = useCallback(async () => {
-    if (!id) return;
+    if (!id || !isDbOpen()) return;
     const list = await listMessages(id);
     setMessages(list);
   }, [id]);
 
   const loadAll = useCallback(async () => {
-    if (!id) return;
+    if (!id || !isDbOpen()) return;
     const [c, convo] = await Promise.all([getContact(id), getConversationByContact(id)]);
     setContact(c);
     setConversation(convo);
@@ -80,12 +83,30 @@ export default function ConversationScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      focusedRef.current = true;
       void loadAll();
-      if (id) void markConversationRead(id);
+      if (id) void markRead(id);
+      return () => {
+        focusedRef.current = false;
+      };
     }, [loadAll, id]),
   );
 
-  // Poll for inbound messages while the screen is open.
+  // React to data changes for this conversation: refresh the messages AND the conversation
+  // row (retention state, pending requests), and mark newly arrived messages read, but only
+  // while actually focused (the screen stays mounted under a pushed contact detail). markRead
+  // emits only when rows flipped, so the listener chain terminates.
+  useEffect(() => {
+    if (!id) return;
+    return subscribeConversationsChanged((cid) => {
+      if (cid !== undefined && cid !== id) return;
+      void loadAll();
+      if (focusedRef.current) void markRead(id);
+    });
+  }, [id, loadAll]);
+
+  // Poll for inbound messages while the screen is open. Kept as a safety net under the
+  // change events (it also retires expired messages from view).
   useEffect(() => {
     const interval = setInterval(() => {
       void loadMessages();
