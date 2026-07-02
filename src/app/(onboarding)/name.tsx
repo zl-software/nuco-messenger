@@ -18,7 +18,7 @@ export default function NameScreen() {
   function onContinue() {
     if (!canContinue) return;
     setDisplayNameDraft(trimmed);
-    router.push('/(onboarding)/keygen');
+    router.push('/(onboarding)/relay');
   }
 
   return (
