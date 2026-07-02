@@ -42,8 +42,12 @@ export async function goOnlineFirstRun(account: Account, upload: import('@nuco/p
   const prefs = await loadPrefs();
   wireRelayCallbacks();
   const client = startRelay(resolveServerUrl(prefs), account, registerParamsFor(account, { kind: 'none' }));
-  await client.ensureReady();
-  await client.publishPreKeys(upload);
+  // Publish prekeys once the socket is ready, but never block first run on a relay that may be
+  // unreachable: ensureReady resolves when this connection (or a later reconnect) comes up.
+  void client
+    .ensureReady()
+    .then(() => client.publishPreKeys(upload))
+    .catch(() => undefined);
   void registerPush();
 }
 

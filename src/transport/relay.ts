@@ -71,6 +71,7 @@ export class RelayClient {
   private readonly outbound: OutboundItem[] = [];
   private readyWaiters: Array<() => void> = [];
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
   private closedByUser = false;
   private registerParams?: RegisterParams;
@@ -89,6 +90,7 @@ export class RelayClient {
   stop(): void {
     this.closedByUser = true;
     this.stopHeartbeat();
+    this.cancelReconnect();
     this.ws?.close();
     this.ws = null;
     this.setStatus('disconnected');
@@ -102,9 +104,24 @@ export class RelayClient {
     return this.status === 'connected';
   }
 
-  ensureReady(): Promise<void> {
+  // Resolve once connected. With a timeoutMs it rejects instead of hanging forever, so callers
+  // that must make progress (first run online) cannot wedge against an unreachable relay.
+  ensureReady(timeoutMs?: number): Promise<void> {
     if (this.status === 'connected') return Promise.resolve();
-    return new Promise((resolve) => this.readyWaiters.push(resolve));
+    return new Promise((resolve, reject) => {
+      const onReady = (): void => {
+        if (timer) clearTimeout(timer);
+        resolve();
+      };
+      const timer = timeoutMs
+        ? setTimeout(() => {
+            const idx = this.readyWaiters.indexOf(onReady);
+            if (idx >= 0) this.readyWaiters.splice(idx, 1);
+            reject(new Error('relay ready timed out'));
+          }, timeoutMs)
+        : null;
+      this.readyWaiters.push(onReady);
+    });
   }
 
   // Resolve true once connected, or false after timeoutMs. Unlike ensureReady this never hangs,
@@ -172,6 +189,9 @@ export class RelayClient {
   }
 
   private openSocket(): void {
+    // A pending reconnect is being fulfilled now (or superseded by an explicit open); drop its
+    // timer so it cannot fire a second openSocket later and orphan this socket.
+    this.cancelReconnect();
     this.setStatus(this.reconnectAttempts > 0 ? 'reconnecting' : 'connecting');
     const ws = new this.opts.WebSocketImpl(this.opts.url);
     this.ws = ws;
@@ -299,12 +319,12 @@ export class RelayClient {
         this.outbound.shift();
         item.resolve();
       } catch (err) {
-        // Stop on the first failure; remaining items flush on the next ready.
-        if (this.status === 'connected') {
-          this.outbound.shift();
-          item.reject(err instanceof Error ? err : new Error('send failed'));
-        }
-        return;
+        // If the socket dropped, keep the item queued for the next ready and stop here.
+        if (this.status !== 'connected') return;
+        // Still connected: this item failed on its own (timeout or server error). Reject just
+        // this one and keep draining, so a single bad send does not strand the rest of the queue.
+        this.outbound.shift();
+        item.reject(err instanceof Error ? err : new Error('send failed'));
       }
     }
   }
@@ -329,9 +349,18 @@ export class RelayClient {
     const base = Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** this.reconnectAttempts);
     const jitter = base * 0.25 * Math.random();
     this.reconnectAttempts += 1;
-    setTimeout(() => {
+    this.cancelReconnect();
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
       if (!this.closedByUser) this.openSocket();
     }, base + jitter);
+  }
+
+  private cancelReconnect(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
   }
 
   private startHeartbeat(): void {
