@@ -10,7 +10,12 @@
 import { AppState, type AppStateStatus } from 'react-native';
 
 import { openEncryptedDb, closeEncryptedDb } from '@/db/client';
-import { getDatabaseKeyWithBiometrics, getDatabaseKeyWithPin } from '@/crypto/secure-storage';
+import {
+  getDatabaseKeyWithBiometrics,
+  getDatabaseKeyWithPin,
+  loadLockoutState,
+  saveLockoutState,
+} from '@/crypto/secure-storage';
 
 export type LockStatus = 'locked' | 'unlocking' | 'unlocked';
 
@@ -23,6 +28,31 @@ let backgroundedAt: number | null = null;
 let autoLockMs = 60_000;
 let failedAttempts = 0;
 let lockoutUntil = 0;
+
+// The lockout counters are persisted so they survive a force quit. Hydrate them from secure
+// storage before the first unlock attempt reads them, so killing the app cannot reset the
+// lockout.
+let lockoutHydrated = false;
+let hydrating: Promise<void> | null = null;
+
+function ensureLockoutHydrated(): Promise<void> {
+  if (lockoutHydrated) return Promise.resolve();
+  if (!hydrating) {
+    hydrating = (async () => {
+      const state = await loadLockoutState();
+      if (state) {
+        failedAttempts = state.failedAttempts;
+        lockoutUntil = state.lockoutUntil;
+      }
+      lockoutHydrated = true;
+    })();
+  }
+  return hydrating;
+}
+
+function persistLockout(): void {
+  void saveLockoutState({ failedAttempts, lockoutUntil }).catch(() => undefined);
+}
 
 const listeners = new Set<(s: LockStatus) => void>();
 
@@ -56,10 +86,13 @@ async function openWithKey(keyB64: string): Promise<void> {
   await openEncryptedDb(keyB64);
   dbKey = keyB64;
   failedAttempts = 0;
+  lockoutUntil = 0;
+  persistLockout();
   setStatus('unlocked');
 }
 
 export async function unlockWithBiometrics(prompt: string): Promise<boolean> {
+  await ensureLockoutHydrated();
   if (lockoutRemainingMs() > 0) return false;
   setStatus('unlocking');
   try {
@@ -77,6 +110,7 @@ export async function unlockWithBiometrics(prompt: string): Promise<boolean> {
 }
 
 export async function unlockWithPin(pin: string): Promise<boolean> {
+  await ensureLockoutHydrated();
   if (lockoutRemainingMs() > 0) return false;
   setStatus('unlocking');
   try {
@@ -89,6 +123,7 @@ export async function unlockWithPin(pin: string): Promise<boolean> {
       lockoutUntil = Date.now() + LOCKOUT_MS;
       failedAttempts = 0;
     }
+    persistLockout();
     setStatus('locked');
     return false;
   }
@@ -121,6 +156,9 @@ function onAppStateChange(next: AppStateStatus): void {
 let subscription: { remove(): void } | null = null;
 export function attachAppStateGate(): void {
   if (subscription) return;
+  // Load the persisted lockout early so the lock screen reflects it without waiting for the
+  // first unlock attempt (which also awaits hydration as a backstop).
+  void ensureLockoutHydrated();
   subscription = AppState.addEventListener('change', onAppStateChange);
 }
 export function detachAppStateGate(): void {

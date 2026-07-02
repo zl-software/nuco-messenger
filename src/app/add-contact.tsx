@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 
@@ -24,8 +24,14 @@ export default function AddContactScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const account = useSession((s) => s.account);
+  const lockStatus = useSession((s) => s.lockStatus);
   const { mode: initialMode } = useLocalSearchParams<{ mode?: Mode }>();
   const [mode, setMode] = useState<Mode>(initialMode === 'scan' ? 'scan' : 'show');
+
+  // This root level route is reachable by deep link and can stay mounted through an auto-lock.
+  // It reads and writes the encrypted database (scanning adds a contact), so gate it on unlock
+  // like the tab screens rather than letting it query a closed database.
+  if (lockStatus !== 'unlocked') return <Redirect href="/lock" />;
 
   return (
     <Screen edges={['top', 'bottom']} contentStyle={styles.content}>

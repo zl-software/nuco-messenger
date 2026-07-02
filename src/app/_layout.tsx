@@ -27,6 +27,7 @@ export default function RootLayout() {
   const [ready, setReady] = useState(false);
   const hydrate = useSettings((s) => s.hydrate);
   const setLockStatus = useSession((s) => s.setLockStatus);
+  const setAccount = useSession((s) => s.setAccount);
 
   useEffect(() => {
     if (__DEV__) {
@@ -48,13 +49,18 @@ export default function RootLayout() {
     void hydrate().then(() => {
       if (mounted) setReady(true);
     });
-    const unsub = subscribeLock(setLockStatus);
+    const unsub = subscribeLock((status) => {
+      setLockStatus(status);
+      // The account record carries the transport auth private key. Drop it from UI state on
+      // lock so nothing sensitive lingers there; unlock reloads it via bringOnline.
+      if (status === 'locked') setAccount(null);
+    });
     attachAppStateGate();
     return () => {
       mounted = false;
       unsub();
     };
-  }, [hydrate, setLockStatus]);
+  }, [hydrate, setLockStatus, setAccount]);
 
   useEffect(() => {
     if (fontsLoaded && ready) void SplashScreen.hideAsync();

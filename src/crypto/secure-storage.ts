@@ -18,6 +18,7 @@ import { wrapKeyWithPin, unwrapKeyWithPin, type WrappedKey } from '@/lock/pin';
 
 const DB_KEY_BIO = 'nuco.dbkey.bio';
 const DB_KEY_PIN = 'nuco.dbkey.pin';
+const LOCKOUT_STATE = 'nuco.lockout';
 
 const DEVICE_BOUND = {
   keychainAccessible: SecureStore.WHEN_PASSCODE_SET_THIS_DEVICE_ONLY,
@@ -67,8 +68,32 @@ export async function hasDatabaseKey(): Promise<boolean> {
   return (await SecureStore.getItemAsync(DB_KEY_PIN, DEVICE_BOUND)) !== null;
 }
 
+// The failed attempt counter and lockout deadline are persisted (not key material) so a force
+// quit cannot reset the lockout and hand an attacker fresh PIN attempts.
+export interface LockoutState {
+  failedAttempts: number;
+  lockoutUntil: number;
+}
+
+export async function saveLockoutState(state: LockoutState): Promise<void> {
+  await SecureStore.setItemAsync(LOCKOUT_STATE, JSON.stringify(state), DEVICE_BOUND);
+}
+
+export async function loadLockoutState(): Promise<LockoutState | null> {
+  const json = await SecureStore.getItemAsync(LOCKOUT_STATE, DEVICE_BOUND);
+  if (!json) return null;
+  try {
+    const parsed = JSON.parse(json) as Partial<LockoutState>;
+    if (typeof parsed.failedAttempts !== 'number' || typeof parsed.lockoutUntil !== 'number') return null;
+    return { failedAttempts: parsed.failedAttempts, lockoutUntil: parsed.lockoutUntil };
+  } catch {
+    return null;
+  }
+}
+
 // Wipe all key material. The encrypted database becomes permanently unrecoverable.
 export async function wipeSecrets(): Promise<void> {
   await SecureStore.deleteItemAsync(DB_KEY_BIO, DEVICE_BOUND);
   await SecureStore.deleteItemAsync(DB_KEY_PIN, DEVICE_BOUND);
+  await SecureStore.deleteItemAsync(LOCKOUT_STATE, DEVICE_BOUND);
 }

@@ -18,6 +18,7 @@ import { insertMessage, markConversationRead, updateMessageStatus, type MessageK
 import { getSignal } from './account';
 import { emitConversationsChanged } from './data-events';
 import { getRelay } from './relay';
+import { isUnlocked } from '@/lock/lock-controller';
 
 function expiryFor(retentionSeconds: number, now: number): number | null {
   return retentionSeconds > 0 ? now + retentionSeconds * 1000 : null;
@@ -198,6 +199,10 @@ export async function cancelRetention(contact: { id: string; handle: string }): 
 // the contact id the message belongs to, or null if the sender is unknown.
 export async function receiveEnvelope(from: string, envelope: MessageEnvelope): Promise<string | null> {
   const relay = getRelay();
+  // The lock gates decryption: while locked the database is closed and the SQLCipher key is
+  // gone. Never decrypt or touch the db here. Leave the message unacked so the relay redelivers
+  // it after unlock, when the socket reconnects and drains the queue.
+  if (!isUnlocked()) return null;
   try {
     const contact = await getContactByHandle(from);
     if (!contact) {
