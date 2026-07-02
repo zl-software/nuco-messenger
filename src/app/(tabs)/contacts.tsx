@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
-import { Avatar, ChevronRight, Pill, Plus, Screen, Text, TextField, VerifiedShield } from '@/ui';
+import { Avatar, ChevronRight, Pill, Plus, Screen, SearchField, Text, VerifiedShield } from '@/ui';
 import { listContacts, type Contact } from '@/db/repos/contacts';
 import { isDbOpen } from '@/db/client';
 import { Colors, Radius, Spacing, accentGlow } from '@/constants/theme';
@@ -57,15 +57,7 @@ export default function ContactsScreen() {
         <Text variant="display">{t('contacts.title')}</Text>
       </View>
 
-      <View style={styles.searchRow}>
-        <TextField
-          value={query}
-          onChangeText={setQuery}
-          placeholder={t('contacts.search')}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-      </View>
+      <SearchField value={query} onChangeText={setQuery} placeholder={t('contacts.search')} style={styles.search} />
 
       {isEmpty ? (
         <View style={styles.empty}>
@@ -145,8 +137,10 @@ function ContactRow({
 
 const styles = StyleSheet.create({
   content: { paddingHorizontal: 0 },
-  header: { paddingHorizontal: Spacing.xl, paddingTop: Spacing.sm },
-  searchRow: { marginHorizontal: Spacing.xl, marginTop: Spacing.lg },
+  // minHeight matches the chats header block (8px padding + 40px action row) so the
+  // search bars on both tabs start at the same height.
+  header: { paddingHorizontal: Spacing.xl, paddingTop: Spacing.sm, minHeight: 48 },
+  search: { marginHorizontal: Spacing.xl, marginTop: Spacing.lg },
   list: { paddingTop: Spacing.lg, paddingBottom: 140 },
   section: { marginBottom: Spacing.lg },
   eyebrow: { paddingHorizontal: Spacing.xl, marginBottom: Spacing.sm },

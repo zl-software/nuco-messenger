@@ -2,7 +2,7 @@
 // verification, retention, and unread affordances. Reloads on focus.
 
 import { useCallback, useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -14,7 +14,7 @@ import {
   QrIcon,
   Plus,
   Screen,
-  Search,
+  SearchField,
   Text,
   VerifiedShield,
 } from '@/ui';
@@ -141,16 +141,7 @@ export default function ChatsScreen() {
   return (
     <Screen contentStyle={styles.screen} edges={['top']}>
       {header}
-      <View style={styles.searchWrap}>
-        <Search size={18} color={Colors.textSecondary} />
-        <TextInput
-          value={query}
-          onChangeText={setQuery}
-          placeholder={t('chats.search')}
-          placeholderTextColor={Colors.textSecondary}
-          style={styles.searchInput}
-        />
-      </View>
+      <SearchField value={query} onChangeText={setQuery} placeholder={t('chats.search')} style={styles.search} />
       <FlatList
         data={filtered}
         keyExtractor={(r) => r.contact.id}
@@ -207,7 +198,9 @@ const styles = StyleSheet.create({
   screen: { paddingHorizontal: Spacing.xl },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
+    // Top aligned so the display title sits at the same height as on the contacts and
+    // settings tabs (centering it in the 40px icon button row pushed it 2px lower).
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     paddingTop: Spacing.sm,
     paddingBottom: Spacing.lg,
@@ -224,18 +217,7 @@ const styles = StyleSheet.create({
     borderColor: Overlay.hairline,
   },
   composeBtn: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  searchWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    backgroundColor: Colors.surface1,
-    borderRadius: Radius.input,
-    borderWidth: 1,
-    borderColor: Overlay.hairline,
-    paddingHorizontal: 14,
-    marginBottom: Spacing.lg,
-  },
-  searchInput: { flex: 1, color: Colors.text, fontSize: 15, fontFamily: Fonts.regular, paddingVertical: 12 },
+  search: { marginBottom: Spacing.lg },
   list: { paddingBottom: Spacing.xxl, gap: Spacing.xs },
   row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingVertical: Spacing.md },
   rowBody: { flex: 1, gap: Spacing.xs },

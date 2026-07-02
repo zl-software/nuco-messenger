@@ -10,6 +10,7 @@ export { NucoMark, NucoLockup } from './NucoLogo';
 export { SegmentedControl } from './SegmentedControl';
 export { Toggle } from './Toggle';
 export { TextField } from './TextField';
+export { SearchField } from './SearchField';
 export { BottomSheet } from './BottomSheet';
 export { PinDots, PinKeypad, PIN_LENGTH } from './PinPad';
 export * from './icons';
