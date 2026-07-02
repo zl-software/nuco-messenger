@@ -26,7 +26,9 @@ function expiryFor(retentionSeconds: number, now: number): number | null {
 // A retention negotiation event logged in the timeline. The direction carries the actor
 // ('out' is the local user, 'in' is the peer); the body carries the requested or applied
 // seconds value, localized at render time. Rows expire with the conversation retention
-// like any other message.
+// like any other message. sentAt orders the timeline (the peer's clock for incoming rows),
+// while expiry anchors to expiryFrom, the LOCAL clock, so a delayed delivery or a skewed
+// peer clock can neither pre-expire a row nor keep it alive past the retention window.
 async function insertSystemMessage(opts: {
   id: string;
   conversationId: string;
@@ -35,6 +37,7 @@ async function insertSystemMessage(opts: {
   value: number | null;
   retentionSeconds: number;
   sentAt: number;
+  expiryFrom: number;
   read: boolean;
 }): Promise<void> {
   await insertMessage({
@@ -45,7 +48,7 @@ async function insertSystemMessage(opts: {
     body: opts.value != null ? String(opts.value) : null,
     status: opts.direction === 'out' ? 'sent' : 'delivered',
     sentAt: opts.sentAt,
-    expiresAt: expiryFor(opts.retentionSeconds, opts.sentAt),
+    expiresAt: expiryFor(opts.retentionSeconds, opts.expiryFrom),
     read: opts.read,
   });
 }
@@ -137,6 +140,7 @@ export async function requestRetention(contact: { id: string; handle: string }, 
     value,
     retentionSeconds: convo.retentionSeconds,
     sentAt: now,
+    expiryFrom: now,
     read: true,
   });
   emitConversationsChanged(contact.id);
@@ -145,6 +149,10 @@ export async function requestRetention(contact: { id: string; handle: string }, 
 
 export async function acceptRetention(contact: { id: string; handle: string }, value: number): Promise<void> {
   const now = Date.now();
+  // Only meaningful while the peer's request is actually pending: a double tap or a stale
+  // screen would otherwise double-log the change and send a duplicate accept.
+  const convo = await getConversation(contact.id);
+  if (!convo?.retentionPending || !convo.retentionPendingIncoming) return;
   await setRetention(contact.id, value);
   await insertSystemMessage({
     id: Crypto.randomUUID(),
@@ -154,6 +162,7 @@ export async function acceptRetention(contact: { id: string; handle: string }, v
     value,
     retentionSeconds: value,
     sentAt: now,
+    expiryFrom: now,
     read: true,
   });
   emitConversationsChanged(contact.id);
@@ -177,6 +186,7 @@ export async function cancelRetention(contact: { id: string; handle: string }): 
       value: null,
       retentionSeconds: convo.retentionSeconds,
       sentAt: now,
+      expiryFrom: now,
       read: true,
     });
   }
@@ -227,6 +237,7 @@ export async function receiveEnvelope(from: string, envelope: MessageEnvelope): 
           value: content.value,
           retentionSeconds: convo.retentionSeconds,
           sentAt: envelope.sentAt || now,
+          expiryFrom: now,
           read: false,
         });
         break;
@@ -240,6 +251,7 @@ export async function receiveEnvelope(from: string, envelope: MessageEnvelope): 
           value: content.value,
           retentionSeconds: content.value,
           sentAt: envelope.sentAt || now,
+          expiryFrom: now,
           read: false,
         });
         break;
@@ -257,6 +269,7 @@ export async function receiveEnvelope(from: string, envelope: MessageEnvelope): 
             value: null,
             retentionSeconds: convo.retentionSeconds,
             sentAt: envelope.sentAt || now,
+            expiryFrom: now,
             read: !declined,
           });
         }

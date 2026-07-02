@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  AppState,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -86,15 +87,31 @@ export default function ConversationScreen() {
 
   // React to data changes for this conversation: refresh the messages AND the conversation
   // row (retention state, pending requests), and mark newly arrived messages read, but only
-  // while actually focused (the screen stays mounted under a pushed contact detail). markRead
-  // emits only when rows flipped, so the listener chain terminates.
+  // while actually visible: navigation focused (the screen stays mounted under a pushed
+  // contact detail) AND the app in the foreground (backgrounding fires no blur, and a
+  // message arriving then was not seen). markRead emits only when rows flipped, so the
+  // listener chain terminates.
+  const visible = useCallback(() => focusedRef.current && AppState.currentState === 'active', []);
+
   useEffect(() => {
     if (!id) return;
     return subscribeConversationsChanged((cid) => {
       if (cid !== undefined && cid !== id) return;
       void loadAll();
-      if (focusedRef.current) void markRead(id);
+      if (visible()) void markRead(id);
     });
+  }, [id, loadAll, visible]);
+
+  // Returning to the foreground on this chat: whatever arrived meanwhile is on screen now,
+  // so refresh and mark it read (no data event fires on resume).
+  useEffect(() => {
+    if (!id) return;
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active' || !focusedRef.current) return;
+      void loadAll();
+      void markRead(id);
+    });
+    return () => sub.remove();
   }, [id, loadAll]);
 
   // Poll for inbound messages while the screen is open. Kept as a safety net under the
@@ -116,17 +133,36 @@ export default function ConversationScreen() {
     setSending(false);
   }, [draft, contact, conversation, sending, loadMessages]);
 
-  const onAcceptRequest = useCallback(async () => {
-    if (!contact || conversation?.retentionPendingValue == null) return;
-    await acceptRetention({ id: contact.id, handle: contact.handle }, conversation.retentionPendingValue);
-    await loadAll();
-  }, [contact, conversation, loadAll]);
+  // Synchronous in-flight guard: the banner only unmounts after the async reload, so a
+  // double tap would otherwise run the handler twice and log the change twice.
+  const respondingRef = useRef(false);
+  const [responding, setResponding] = useState(false);
+  const respond = useCallback(
+    async (action: () => Promise<void>) => {
+      if (respondingRef.current) return;
+      respondingRef.current = true;
+      setResponding(true);
+      try {
+        await action();
+        await loadAll();
+      } finally {
+        respondingRef.current = false;
+        setResponding(false);
+      }
+    },
+    [loadAll],
+  );
 
-  const onDeclineRequest = useCallback(async () => {
+  const onAcceptRequest = useCallback(() => {
+    if (!contact || conversation?.retentionPendingValue == null) return;
+    const value = conversation.retentionPendingValue;
+    void respond(() => acceptRetention({ id: contact.id, handle: contact.handle }, value));
+  }, [contact, conversation, respond]);
+
+  const onDeclineRequest = useCallback(() => {
     if (!contact) return;
-    await cancelRetention({ id: contact.id, handle: contact.handle });
-    await loadAll();
-  }, [contact, loadAll]);
+    void respond(() => cancelRetention({ id: contact.id, handle: contact.handle }));
+  }, [contact, respond]);
 
   if (!contact) {
     return <Screen contentStyle={styles.screen}>{null}</Screen>;
@@ -186,8 +222,14 @@ export default function ConversationScreen() {
               : t('retention.systemRequestInOff', { name: contact.displayName })}
           </Text>
           <View style={styles.requestActions}>
-            <Button label={t('retention.accept')} onPress={onAcceptRequest} style={styles.requestBtn} />
-            <Button label={t('retention.decline')} variant="secondary" onPress={onDeclineRequest} style={styles.requestBtn} />
+            <Button label={t('retention.accept')} onPress={onAcceptRequest} disabled={responding} style={styles.requestBtn} />
+            <Button
+              label={t('retention.decline')}
+              variant="secondary"
+              onPress={onDeclineRequest}
+              disabled={responding}
+              style={styles.requestBtn}
+            />
           </View>
         </Card>
       ) : null}
