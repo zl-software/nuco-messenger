@@ -171,6 +171,7 @@
     "or": "OR",
     "scanToCompare": "Scan their code to compare",
     "showMyCode": "Show my code",
+    "hideMyCode": "Hide my code",
     "mutualHint": "Let {{name}} scan your code too, then check that both phones show the same codes.",
     "markVerified": "They match, mark verified",
     "markVerifiedCountdown": "They match, mark verified ({{seconds}})",

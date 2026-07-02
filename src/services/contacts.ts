@@ -4,8 +4,9 @@
 
 import * as Crypto from 'expo-crypto';
 
-import { isContactCard, type ContactCard } from '@nuco/protocol';
-import { getSignal } from './account';
+import { CONTACT_CARD_VERSION, isContactCard, type ContactCard } from '@nuco/protocol';
+import { getSignal, type Account } from './account';
+import { formatFingerprint } from './onboarding';
 import { getRelay } from './relay';
 import { upsertContact, getContactByHandle, setVerified, type Contact } from '@/db/repos/contacts';
 import { ensureConversation } from '@/db/repos/conversations';
@@ -18,6 +19,17 @@ export type ScanOutcome =
   | { kind: 'mismatch' };
 
 const DEFAULT_RETENTION_SECONDS = 86400;
+
+// The QR payload advertising this device's identity. Public data only, never a private key.
+export function buildContactCard(account: Account): ContactCard {
+  return {
+    v: CONTACT_CARD_VERSION,
+    handle: account.handle,
+    identityKey: account.identityKeyB64,
+    fingerprint: formatFingerprint(account.identityKeyB64),
+    displayName: account.displayName,
+  };
+}
 
 export function parseScannedCode(data: string): ContactCard | 'invalid' | 'notNuco' {
   let parsed: unknown;

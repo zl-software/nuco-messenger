@@ -3,14 +3,12 @@ import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import QRCode from 'react-native-qrcode-svg';
 
-import { Button, Card, Screen, SegmentedControl, Text, VerifiedShield } from '@/ui';
+import { Button, Card, QrCard, Screen, SegmentedControl, Text, VerifiedShield } from '@/ui';
 import { useSession } from '@/state/session';
-import { addContactFromCard, parseScannedCode } from '@/services/contacts';
-import { formatFingerprint } from '@/services/onboarding';
-import { CONTACT_CARD_VERSION, type ContactCard } from '@nuco/protocol';
-import { Colors, Overlay, Radius, Spacing } from '@/constants/theme';
+import { addContactFromCard, buildContactCard, parseScannedCode } from '@/services/contacts';
+import { type ContactCard } from '@nuco/protocol';
+import { Colors, Radius, Spacing } from '@/constants/theme';
 
 type Mode = 'show' | 'scan';
 type ScanError = 'invalid' | 'notNuco' | 'offline' | 'mismatch' | null;
@@ -51,7 +49,7 @@ export default function AddContactScreen() {
       </View>
 
       {mode === 'show' ? (
-        <ShowCode card={account ? buildCard(account) : null} />
+        <ShowCode card={account ? buildContactCard(account) : null} />
       ) : (
         <ScanCode
           onAdded={(id) => router.replace({ pathname: '/verify/[id]', params: { id, from: 'scan' } })}
@@ -62,24 +60,12 @@ export default function AddContactScreen() {
   );
 }
 
-function buildCard(account: NonNullable<ReturnType<typeof useSession.getState>['account']>): ContactCard {
-  return {
-    v: CONTACT_CARD_VERSION,
-    handle: account.handle,
-    identityKey: account.identityKeyB64,
-    fingerprint: formatFingerprint(account.identityKeyB64),
-    displayName: account.displayName,
-  };
-}
-
 function ShowCode({ card }: { card: ContactCard | null }) {
   const { t } = useTranslation();
   if (!card) return null;
   return (
     <View style={styles.showWrap}>
-      <View style={styles.qrCard}>
-        <QRCode value={JSON.stringify(card)} size={220} backgroundColor="#F2F4F7" color="#0A0B0E" />
-      </View>
+      <QrCard value={JSON.stringify(card)} />
       <View style={styles.identity}>
         <Text variant="subtitle">{card.displayName}</Text>
         <VerifiedShield size={16} color={Colors.accent} />
@@ -227,13 +213,6 @@ const styles = StyleSheet.create({
   close: { fontSize: 20, color: Colors.text },
   segment: { paddingHorizontal: Spacing.xl, marginBottom: Spacing.xl },
   showWrap: { alignItems: 'center', paddingHorizontal: Spacing.xl, paddingTop: Spacing.lg },
-  qrCard: {
-    backgroundColor: '#F2F4F7',
-    borderRadius: Radius.sheet,
-    padding: 22,
-    borderWidth: 1,
-    borderColor: Overlay.accentBorder,
-  },
   identity: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.xl },
   identitySub: { marginTop: Spacing.xs },
   hint: { marginTop: Spacing.xl, alignSelf: 'stretch' },

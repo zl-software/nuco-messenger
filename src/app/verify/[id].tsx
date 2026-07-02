@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
-import { Button, Card, ChevronLeft, QrIcon, Screen, Text } from '@/ui';
+import { Button, Card, ChevronLeft, QrCard, QrIcon, Screen, Text } from '@/ui';
 import { getContact, type Contact } from '@/db/repos/contacts';
 import { getSignal } from '@/services/account';
-import { markVerified } from '@/services/contacts';
+import { buildContactCard, markVerified } from '@/services/contacts';
 import { useSession } from '@/state/session';
 import { Colors, Overlay, Spacing } from '@/constants/theme';
 
@@ -28,6 +28,10 @@ export default function VerifyScreen() {
   const [contact, setContact] = useState<Contact | null>(null);
   const [strings, setStrings] = useState<Strings | null>(null);
   const [countdown, setCountdown] = useState(VERIFY_DELAY_SECONDS);
+  const [showCode, setShowCode] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+  // Memoized so the countdown rerenders do not regenerate the QR matrix every second.
+  const qrValue = useMemo(() => (account ? JSON.stringify(buildContactCard(account)) : null), [account]);
 
   useEffect(() => {
     let active = true;
@@ -88,7 +92,7 @@ export default function VerifyScreen() {
         <View style={styles.headerBtn} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         <Text variant="bodySecondary" color="textSecondary" style={styles.intro}>
           {t('verification.compareBody', { name })}
         </Text>
@@ -126,9 +130,9 @@ export default function VerifyScreen() {
         </Text>
 
         <Button
-          label={t('verification.showMyCode')}
+          label={showCode ? t('verification.hideMyCode') : t('verification.showMyCode')}
           icon={<QrIcon size={18} color={Colors.accentInk} />}
-          onPress={() => router.push({ pathname: '/add-contact', params: { mode: 'show' } })}
+          onPress={() => setShowCode((s) => !s)}
           style={styles.primary}
         />
         <Button
@@ -141,6 +145,18 @@ export default function VerifyScreen() {
           onPress={onMarkVerified}
           disabled={!canVerify}
         />
+
+        {showCode && qrValue ? (
+          // Below the buttons so both phones can be held together: one shows this code while
+          // the other scans, with the safety number still on screen. onLayout fires when the
+          // card mounts (after layout), so the scroll sees the final content height.
+          <View style={styles.ownCode} onLayout={() => scrollRef.current?.scrollToEnd({ animated: true })}>
+            <QrCard value={qrValue} />
+            <Text variant="monoCaption" color="textSecondary">
+              {'@' + (account?.handle ?? '')}
+            </Text>
+          </View>
+        ) : null}
       </ScrollView>
     </Screen>
   );
@@ -178,4 +194,5 @@ const styles = StyleSheet.create({
   emojiGlyph: { fontSize: 28 },
   mutualHint: { textAlign: 'center', marginBottom: Spacing.md },
   primary: { marginTop: Spacing.xs, marginBottom: Spacing.md },
+  ownCode: { alignItems: 'center', gap: Spacing.md, marginTop: Spacing.xl },
 });

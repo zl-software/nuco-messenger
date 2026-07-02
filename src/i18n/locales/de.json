@@ -171,6 +171,7 @@
     "or": "ODER",
     "scanToCompare": "Deren Code scannen zum Vergleichen",
     "showMyCode": "Meinen Code zeigen",
+    "hideMyCode": "Meinen Code ausblenden",
     "mutualHint": "Lass {{name}} auch deinen Code scannen und prüfe dann, ob beide Handys dieselben Codes anzeigen.",
     "markVerified": "Sie stimmen überein, als verifiziert markieren",
     "markVerifiedCountdown": "Sie stimmen überein, als verifiziert markieren ({{seconds}})",
