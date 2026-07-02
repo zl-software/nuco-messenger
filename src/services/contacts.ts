@@ -5,7 +5,7 @@
 import * as Crypto from 'expo-crypto';
 
 import { CONTACT_CARD_VERSION, isContactCard, type ContactCard } from '@nuco/protocol';
-import { getSignal, type Account } from './account';
+import { getSignal, loadAccount, type Account } from './account';
 import { formatFingerprint } from './onboarding';
 import { getRelay } from './relay';
 import { upsertContact, getContactByHandle, setVerified, type Contact } from '@/db/repos/contacts';
@@ -16,7 +16,8 @@ export type ScanOutcome =
   | { kind: 'invalid' }
   | { kind: 'notNuco' }
   | { kind: 'offline' }
-  | { kind: 'mismatch' };
+  | { kind: 'mismatch' }
+  | { kind: 'self' };
 
 const DEFAULT_RETENTION_SECONDS = 86400;
 
@@ -46,6 +47,10 @@ export function parseScannedCode(data: string): ContactCard | 'invalid' | 'notNu
 // Add a contact from a scanned card. Scanning anchors their key by physical presence, so the
 // fetched bundle's identity key must match the card. The scanner can then mark verified.
 export async function addContactFromCard(card: ContactCard): Promise<ScanOutcome> {
+  // Scanning your own code would otherwise create a conversation with yourself.
+  const account = await loadAccount();
+  if (account && card.handle === account.handle) return { kind: 'self' };
+
   const relay = getRelay();
   // Fetching the bundle waits on the socket being ready, which never resolves while the relay
   // is unreachable. Give an in progress connect a few seconds, then fail with a clear offline

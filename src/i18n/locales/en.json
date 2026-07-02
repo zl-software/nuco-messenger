@@ -173,6 +173,8 @@
     "offlineBody": "Adding a contact needs a connection to fetch their keys. Connect to your server and try again.",
     "mismatchTitle": "Keys do not match",
     "mismatchBody": "The key the server returned does not match their code. Do not trust this contact, and try again.",
+    "selfTitle": "That is your own code",
+    "selfBody": "You cannot add yourself as a contact. Scan a friend's code instead.",
     "alreadyAddedTitle": "Already in your contacts",
     "openChat": "Open chat",
     "successTitle": "Verified",

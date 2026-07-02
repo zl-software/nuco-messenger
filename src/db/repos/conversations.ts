@@ -50,10 +50,15 @@ export async function getConversationByContact(contactId: string): Promise<Conve
 export async function ensureConversation(id: string, contactId: string, retentionSeconds: number, now: number): Promise<Conversation> {
   const existing = await getConversationByContact(contactId);
   if (existing) return existing;
+  // INSERT OR IGNORE so two concurrent receives for the same contact (which pass the same id)
+  // do not throw a PRIMARY KEY violation and drop a message. The insert is idempotent; the row
+  // below is authoritative whether we won the race or another caller did.
   await getDb().execute(
-    'INSERT INTO conversations (id, contact_id, retention_seconds, retention_pending, retention_pending_value, retention_pending_incoming, muted, created_at) VALUES (?, ?, ?, 0, NULL, 0, 0, ?)',
+    'INSERT OR IGNORE INTO conversations (id, contact_id, retention_seconds, retention_pending, retention_pending_value, retention_pending_incoming, muted, created_at) VALUES (?, ?, ?, 0, NULL, 0, 0, ?)',
     [id, contactId, retentionSeconds, now],
   );
+  const row = await getConversationByContact(contactId);
+  if (row) return row;
   return {
     id,
     contactId,

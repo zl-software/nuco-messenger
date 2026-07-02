@@ -132,6 +132,9 @@ export async function requestRetention(contact: { id: string; handle: string }, 
   // Ensure the conversation row exists: setRetentionPending is an UPDATE (a no-op without
   // one) and the system message insert needs the foreign key target.
   const convo = await ensureConversation(contact.id, contact.id, 86400, now);
+  // Idempotent, mirroring acceptRetention: a rapid double tap or a stale screen must not log a
+  // second request row or resend while our own request is already pending.
+  if (convo.retentionPending && !convo.retentionPendingIncoming) return;
   await setRetentionPending(contact.id, value, false);
   await insertSystemMessage({
     id: Crypto.randomUUID(),
@@ -195,9 +198,26 @@ export async function cancelRetention(contact: { id: string; handle: string }): 
   await sendControl(contact.handle, { t: 'retention/cancel' });
 }
 
+// Inbound delivery is fire-and-forget from the relay, so two messages can arrive back to back.
+// Serialize processing so we never run two decrypts against the same ratchet concurrently,
+// which could corrupt session state.
+let receiveChain: Promise<unknown> = Promise.resolve();
+
 // Handle an inbound deliver from the relay: decrypt, route by content type, and ack. Returns
 // the contact id the message belongs to, or null if the sender is unknown.
-export async function receiveEnvelope(from: string, envelope: MessageEnvelope): Promise<string | null> {
+export function receiveEnvelope(from: string, envelope: MessageEnvelope): Promise<string | null> {
+  const result = receiveChain.then(
+    () => doReceiveEnvelope(from, envelope),
+    () => doReceiveEnvelope(from, envelope),
+  );
+  receiveChain = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
+async function doReceiveEnvelope(from: string, envelope: MessageEnvelope): Promise<string | null> {
   const relay = getRelay();
   // The lock gates decryption: while locked the database is closed and the SQLCipher key is
   // gone. Never decrypt or touch the db here. Leave the message unacked so the relay redelivers

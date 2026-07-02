@@ -11,13 +11,14 @@ import { type ContactCard } from '@nuco/protocol';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 
 type Mode = 'show' | 'scan';
-type ScanError = 'invalid' | 'notNuco' | 'offline' | 'mismatch' | null;
+type ScanError = 'invalid' | 'notNuco' | 'offline' | 'mismatch' | 'self' | null;
 
 const SCAN_ERROR_COPY = {
   invalid: { tone: 'danger', title: 'addContact.invalidTitle', body: 'addContact.invalidBody', cta: 'addContact.tryAgain' },
   notNuco: { tone: 'warning', title: 'addContact.notNucoTitle', body: 'addContact.notNucoBody', cta: 'addContact.scanNuco' },
   offline: { tone: 'warning', title: 'addContact.offlineTitle', body: 'addContact.offlineBody', cta: 'addContact.tryAgain' },
   mismatch: { tone: 'danger', title: 'addContact.mismatchTitle', body: 'addContact.mismatchBody', cta: 'addContact.tryAgain' },
+  self: { tone: 'warning', title: 'addContact.selfTitle', body: 'addContact.selfBody', cta: 'addContact.tryAgain' },
 } as const;
 
 export default function AddContactScreen() {

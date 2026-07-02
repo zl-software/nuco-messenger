@@ -173,6 +173,8 @@
     "offlineBody": "Zum Hinzufügen eines Kontakts ist eine Verbindung nötig, um seine Schlüssel zu laden. Verbinde dich mit deinem Server und versuche es erneut.",
     "mismatchTitle": "Schlüssel stimmen nicht überein",
     "mismatchBody": "Der vom Server gelieferte Schlüssel stimmt nicht mit ihrem Code überein. Vertraue diesem Kontakt nicht und versuche es erneut.",
+    "selfTitle": "Das ist dein eigener Code",
+    "selfBody": "Du kannst dich nicht selbst als Kontakt hinzufügen. Scanne stattdessen den Code einer anderen Person.",
     "alreadyAddedTitle": "Bereits in deinen Kontakten",
     "openChat": "Chat öffnen",
     "successTitle": "Verifiziert",

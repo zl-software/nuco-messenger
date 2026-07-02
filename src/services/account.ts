@@ -91,11 +91,26 @@ interface PreKeyCursor {
   nextOneTimeId: number;
 }
 
+// Serialize prekey generation: the read-generate-write of the cursor is not atomic, so two
+// concurrent callers (quick lock/unlock, a relay reconnect racing a fetch) could read the same
+// cursor, mint overlapping ids, and overwrite each other's stored prekeys. Chaining calls makes
+// each run see the cursor the previous one committed.
+let preKeyGenChain: Promise<unknown> = Promise.resolve();
+
 // Rebuild a fresh prekey batch, persist the private parts into the encrypted store, and return
 // the public upload for the relay. Used to (re)publish to a relay that holds none of our keys
 // (self hosted or reset). Each batch uses fresh ids past a persisted cursor, so prekeys from
 // earlier batches stay valid for any in flight sessions. Returns null if there is no identity.
-export async function generatePreKeyUpload(): Promise<PreKeyUpload | null> {
+export function generatePreKeyUpload(): Promise<PreKeyUpload | null> {
+  const result = preKeyGenChain.then(doGeneratePreKeyUpload, doGeneratePreKeyUpload);
+  preKeyGenChain = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
+async function doGeneratePreKeyUpload(): Promise<PreKeyUpload | null> {
   const store = new NucoSignalStore(new SqliteSignalBackend());
   const identityKeyPair = await store.getIdentityKeyPair();
   if (!identityKeyPair) return null;
