@@ -86,6 +86,7 @@
     "unverified": "unverified",
     "blocked": "blocked",
     "retentionBanner": "Messages disappear after {{duration}}",
+    "retentionBannerPending": "Change to {{value}} pending",
     "composerPlaceholder": "Message",
     "emptyVerifiedTitle": "You are verified with {{name}}",
     "emptyVerifiedBody": "Messages are end to end encrypted and disappear on a timer. Say hello.",
@@ -119,7 +120,19 @@
     "decline": "Decline",
     "acceptedTitle": "Change accepted",
     "acceptedBody": "{{name}} accepted your request. Messages in this chat now disappear after {{value}}.",
-    "bothNotified": "Both parties are notified of every retention change."
+    "bothNotified": "Both parties are notified of every retention change.",
+    "systemRequestIn": "{{name}} asked to set messages to disappear after {{value}}",
+    "systemRequestInOff": "{{name}} asked to turn off disappearing messages",
+    "systemRequestOut": "You asked to set messages to disappear after {{value}}",
+    "systemRequestOutOff": "You asked to turn off disappearing messages",
+    "systemChangedIn": "{{name}} accepted. Messages now disappear after {{value}}",
+    "systemChangedInOff": "{{name}} accepted. Disappearing messages are now off",
+    "systemChangedOut": "You accepted. Messages now disappear after {{value}}",
+    "systemChangedOutOff": "You accepted. Disappearing messages are now off",
+    "systemDeclinedIn": "{{name}} declined the timer change",
+    "systemDeclinedOut": "You declined the timer change",
+    "systemCanceledIn": "{{name}} withdrew the timer request",
+    "systemCanceledOut": "You withdrew your timer request"
   },
   "contacts": {
     "title": "Contacts",

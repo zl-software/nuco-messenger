@@ -5,10 +5,21 @@ import { getDb } from '../client';
 export type MessageDirection = 'in' | 'out';
 export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'failed';
 
+// System kinds log the retention negotiation in the timeline. The direction column carries
+// the actor ('out' means the local user did it, 'in' means the peer), so the unread count
+// and mark read logic work for system rows unchanged.
+export type MessageKind =
+  | 'text'
+  | 'retention/request'
+  | 'retention/changed'
+  | 'retention/declined'
+  | 'retention/canceled';
+
 export interface Message {
   id: string;
   conversationId: string;
   direction: MessageDirection;
+  kind: MessageKind;
   body: string | null;
   status: MessageStatus;
   sentAt: number;
@@ -20,6 +31,7 @@ interface MessageRow {
   id: string;
   conversation_id: string;
   direction: string;
+  kind: string;
   ciphertext_meta: string | null;
   body_encrypted: string | null;
   status: string;
@@ -33,6 +45,7 @@ function toMessage(r: MessageRow): Message {
     id: r.id,
     conversationId: r.conversation_id,
     direction: r.direction as MessageDirection,
+    kind: r.kind as MessageKind,
     body: r.body_encrypted,
     status: r.status as MessageStatus,
     sentAt: r.sent_at,
@@ -43,9 +56,9 @@ function toMessage(r: MessageRow): Message {
 
 export async function insertMessage(m: Message): Promise<void> {
   await getDb().execute(
-    `INSERT OR IGNORE INTO messages (id, conversation_id, direction, ciphertext_meta, body_encrypted, status, sent_at, expires_at, read)
-     VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?)`,
-    [m.id, m.conversationId, m.direction, m.body, m.status, m.sentAt, m.expiresAt, m.read ? 1 : 0],
+    `INSERT OR IGNORE INTO messages (id, conversation_id, direction, kind, ciphertext_meta, body_encrypted, status, sent_at, expires_at, read)
+     VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)`,
+    [m.id, m.conversationId, m.direction, m.kind, m.body, m.status, m.sentAt, m.expiresAt, m.read ? 1 : 0],
   );
 }
 
@@ -74,21 +87,36 @@ export interface ConversationPreview {
   body: string | null;
   sentAt: number;
   direction: MessageDirection;
+  kind: MessageKind;
   unread: number;
 }
 
 export async function conversationPreviews(): Promise<ConversationPreview[]> {
   const result = await getDb().execute(
-    `SELECT m.conversation_id, m.body_encrypted AS body, m.direction, m.sent_at,
+    `SELECT m.conversation_id, m.body_encrypted AS body, m.direction, m.kind, m.sent_at,
             (SELECT COUNT(*) FROM messages u WHERE u.conversation_id = m.conversation_id AND u.read = 0 AND u.direction = 'in') AS unread
      FROM messages m
      JOIN (SELECT conversation_id, MAX(sent_at) AS mx FROM messages GROUP BY conversation_id) latest
        ON latest.conversation_id = m.conversation_id AND latest.mx = m.sent_at
      ORDER BY m.sent_at DESC`,
   );
-  return (result.rows as unknown as Array<{ conversation_id: string; body: string | null; direction: string; sent_at: number; unread: number }>).map(
-    (r) => ({ conversationId: r.conversation_id, body: r.body, sentAt: r.sent_at, direction: r.direction as MessageDirection, unread: r.unread }),
-  );
+  return (
+    result.rows as unknown as Array<{
+      conversation_id: string;
+      body: string | null;
+      direction: string;
+      kind: string;
+      sent_at: number;
+      unread: number;
+    }>
+  ).map((r) => ({
+    conversationId: r.conversation_id,
+    body: r.body,
+    sentAt: r.sent_at,
+    direction: r.direction as MessageDirection,
+    kind: r.kind as MessageKind,
+    unread: r.unread,
+  }));
 }
 
 // Delete messages whose expiry has passed. Returns the number removed.

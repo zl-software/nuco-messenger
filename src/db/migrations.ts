@@ -23,6 +23,10 @@ export async function migrate(db: DB): Promise<void> {
     if (current < 2 && !(await columnExists(db, 'conversations', 'retention_pending_incoming'))) {
       await db.execute('ALTER TABLE conversations ADD COLUMN retention_pending_incoming INTEGER NOT NULL DEFAULT 0');
     }
+    // v2 -> v3: message kind distinguishes text from retention system messages.
+    if (current < 3 && !(await columnExists(db, 'messages', 'kind'))) {
+      await db.execute("ALTER TABLE messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'");
+    }
     await db.execute(
       'INSERT INTO meta(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
       ['schema_version', String(SCHEMA_VERSION)],

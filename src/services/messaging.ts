@@ -14,13 +14,40 @@ import {
   setRetentionPending,
   clearRetentionPending,
 } from '@/db/repos/conversations';
-import { insertMessage, markConversationRead, updateMessageStatus } from '@/db/repos/messages';
+import { insertMessage, markConversationRead, updateMessageStatus, type MessageKind } from '@/db/repos/messages';
 import { getSignal } from './account';
 import { emitConversationsChanged } from './data-events';
 import { getRelay } from './relay';
 
 function expiryFor(retentionSeconds: number, now: number): number | null {
   return retentionSeconds > 0 ? now + retentionSeconds * 1000 : null;
+}
+
+// A retention negotiation event logged in the timeline. The direction carries the actor
+// ('out' is the local user, 'in' is the peer); the body carries the requested or applied
+// seconds value, localized at render time. Rows expire with the conversation retention
+// like any other message.
+async function insertSystemMessage(opts: {
+  id: string;
+  conversationId: string;
+  kind: MessageKind;
+  direction: 'in' | 'out';
+  value: number | null;
+  retentionSeconds: number;
+  sentAt: number;
+  read: boolean;
+}): Promise<void> {
+  await insertMessage({
+    id: opts.id,
+    conversationId: opts.conversationId,
+    direction: opts.direction,
+    kind: opts.kind,
+    body: opts.value != null ? String(opts.value) : null,
+    status: opts.direction === 'out' ? 'sent' : 'delivered',
+    sentAt: opts.sentAt,
+    expiresAt: expiryFor(opts.retentionSeconds, opts.sentAt),
+    read: opts.read,
+  });
 }
 
 // Seal a typed content envelope toward a contact and hand it to the relay. Returns the
@@ -41,6 +68,7 @@ export async function sendText(contact: { id: string; handle: string }, text: st
     id,
     conversationId: contact.id,
     direction: 'out',
+    kind: 'text',
     body: text,
     status: 'sending',
     sentAt: now,
@@ -96,13 +124,38 @@ async function sendControl(handle: string, content: MessageContent): Promise<voi
 }
 
 export async function requestRetention(contact: { id: string; handle: string }, value: number): Promise<void> {
+  const now = Date.now();
+  // Ensure the conversation row exists: setRetentionPending is an UPDATE (a no-op without
+  // one) and the system message insert needs the foreign key target.
+  const convo = await ensureConversation(contact.id, contact.id, 86400, now);
   await setRetentionPending(contact.id, value, false);
+  await insertSystemMessage({
+    id: Crypto.randomUUID(),
+    conversationId: contact.id,
+    kind: 'retention/request',
+    direction: 'out',
+    value,
+    retentionSeconds: convo.retentionSeconds,
+    sentAt: now,
+    read: true,
+  });
   emitConversationsChanged(contact.id);
   await sendControl(contact.handle, { t: 'retention/request', value });
 }
 
 export async function acceptRetention(contact: { id: string; handle: string }, value: number): Promise<void> {
+  const now = Date.now();
   await setRetention(contact.id, value);
+  await insertSystemMessage({
+    id: Crypto.randomUUID(),
+    conversationId: contact.id,
+    kind: 'retention/changed',
+    direction: 'out',
+    value,
+    retentionSeconds: value,
+    sentAt: now,
+    read: true,
+  });
   emitConversationsChanged(contact.id);
   await sendControl(contact.handle, { t: 'retention/accept', value });
 }
@@ -110,7 +163,23 @@ export async function acceptRetention(contact: { id: string; handle: string }, v
 // Used both when the requester cancels their own pending request and when the recipient
 // declines an incoming one: in both cases the peer should drop the pending change.
 export async function cancelRetention(contact: { id: string; handle: string }): Promise<void> {
+  const now = Date.now();
+  const convo = await getConversation(contact.id);
   await clearRetentionPending(contact.id);
+  if (convo?.retentionPending) {
+    await insertSystemMessage({
+      id: Crypto.randomUUID(),
+      conversationId: contact.id,
+      // Pending from the peer means the local user is declining their request; pending
+      // from us means the local user is withdrawing their own.
+      kind: convo.retentionPendingIncoming ? 'retention/declined' : 'retention/canceled',
+      direction: 'out',
+      value: null,
+      retentionSeconds: convo.retentionSeconds,
+      sentAt: now,
+      read: true,
+    });
+  }
   emitConversationsChanged(contact.id);
   await sendControl(contact.handle, { t: 'retention/cancel' });
 }
@@ -137,6 +206,7 @@ export async function receiveEnvelope(from: string, envelope: MessageEnvelope): 
           id: envelope.id,
           conversationId: contact.id,
           direction: 'in',
+          kind: 'text',
           body: content.body,
           status: 'delivered',
           sentAt: envelope.sentAt || now,
@@ -144,15 +214,55 @@ export async function receiveEnvelope(from: string, envelope: MessageEnvelope): 
           read: false,
         });
         break;
+      // System rows reuse the envelope id, so insertMessage's INSERT OR IGNORE makes a
+      // relay redelivery a no-op. Incoming request, changed, and declined rows arrive
+      // unread on purpose: they surface as the unread badge on the chats list.
       case 'retention/request':
         await setRetentionPending(contact.id, content.value, true);
+        await insertSystemMessage({
+          id: envelope.id,
+          conversationId: contact.id,
+          kind: 'retention/request',
+          direction: 'in',
+          value: content.value,
+          retentionSeconds: convo.retentionSeconds,
+          sentAt: envelope.sentAt || now,
+          read: false,
+        });
         break;
       case 'retention/accept':
         await setRetention(contact.id, content.value);
+        await insertSystemMessage({
+          id: envelope.id,
+          conversationId: contact.id,
+          kind: 'retention/changed',
+          direction: 'in',
+          value: content.value,
+          retentionSeconds: content.value,
+          sentAt: envelope.sentAt || now,
+          read: false,
+        });
         break;
-      case 'retention/cancel':
+      case 'retention/cancel': {
+        // The wire message carries no reason. Local pending state disambiguates: our
+        // request pending means the peer declined it; their own pending means they
+        // withdrew it. Nothing pending means a stale duplicate, log nothing.
+        if (convo.retentionPending) {
+          const declined = !convo.retentionPendingIncoming;
+          await insertSystemMessage({
+            id: envelope.id,
+            conversationId: contact.id,
+            kind: declined ? 'retention/declined' : 'retention/canceled',
+            direction: 'in',
+            value: null,
+            retentionSeconds: convo.retentionSeconds,
+            sentAt: envelope.sentAt || now,
+            read: !declined,
+          });
+        }
         await clearRetentionPending(contact.id);
         break;
+      }
     }
 
     emitConversationsChanged(contact.id);

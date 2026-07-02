@@ -86,6 +86,7 @@
     "unverified": "nicht verifiziert",
     "blocked": "blockiert",
     "retentionBanner": "Nachrichten verschwinden nach {{duration}}",
+    "retentionBannerPending": "Änderung auf {{value}} ausstehend",
     "composerPlaceholder": "Nachricht",
     "emptyVerifiedTitle": "Du bist mit {{name}} verifiziert",
     "emptyVerifiedBody": "Nachrichten sind Ende-zu-Ende-verschlüsselt und verschwinden nach einem Timer. Sag Hallo.",
@@ -119,7 +120,19 @@
     "decline": "Ablehnen",
     "acceptedTitle": "Änderung akzeptiert",
     "acceptedBody": "{{name}} hat deine Anfrage akzeptiert. Nachrichten in diesem Chat verschwinden jetzt nach {{value}}.",
-    "bothNotified": "Beide Parteien werden über jede Aufbewahrungsänderung benachrichtigt."
+    "bothNotified": "Beide Parteien werden über jede Aufbewahrungsänderung benachrichtigt.",
+    "systemRequestIn": "{{name}} hat angefragt, Nachrichten nach {{value}} verschwinden zu lassen",
+    "systemRequestInOff": "{{name}} hat angefragt, verschwindende Nachrichten auszuschalten",
+    "systemRequestOut": "Du hast angefragt, Nachrichten nach {{value}} verschwinden zu lassen",
+    "systemRequestOutOff": "Du hast angefragt, verschwindende Nachrichten auszuschalten",
+    "systemChangedIn": "{{name}} hat akzeptiert. Nachrichten verschwinden jetzt nach {{value}}",
+    "systemChangedInOff": "{{name}} hat akzeptiert. Verschwindende Nachrichten sind jetzt aus",
+    "systemChangedOut": "Du hast akzeptiert. Nachrichten verschwinden jetzt nach {{value}}",
+    "systemChangedOutOff": "Du hast akzeptiert. Verschwindende Nachrichten sind jetzt aus",
+    "systemDeclinedIn": "{{name}} hat die Timer-Änderung abgelehnt",
+    "systemDeclinedOut": "Du hast die Timer-Änderung abgelehnt",
+    "systemCanceledIn": "{{name}} hat die Timer-Anfrage zurückgezogen",
+    "systemCanceledOut": "Du hast deine Timer-Anfrage zurückgezogen"
   },
   "contacts": {
     "title": "Kontakte",

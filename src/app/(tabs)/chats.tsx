@@ -19,17 +19,19 @@ import {
   VerifiedShield,
 } from '@/ui';
 import { Colors, Fonts, Overlay, Radius, Spacing } from '@/constants/theme';
-import { conversationPreviews } from '@/db/repos/messages';
+import { conversationPreviews, type MessageKind } from '@/db/repos/messages';
 import { getContact, type Contact } from '@/db/repos/contacts';
 import { getConversation } from '@/db/repos/conversations';
 import { isDbOpen } from '@/db/client';
 import { subscribeConversationsChanged } from '@/services/data-events';
+import { retentionKey, systemMessageKey, type RetentionOptionKey } from '@/i18n/system-messages';
 
 interface ChatRow {
   contact: Contact;
   body: string | null;
   sentAt: number;
   direction: 'in' | 'out';
+  kind: MessageKind;
   unread: number;
   retentionSeconds: number;
 }
@@ -41,13 +43,8 @@ function formatTime(ms: number): string {
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
 }
 
-type RetentionKey = 'retention.optionOff' | 'retention.option24h' | 'retention.option7d' | 'retention.option30d';
-
-function retentionPill(seconds: number): { key: RetentionKey; tone: 'accent' | 'neutral' } {
-  if (seconds <= 0) return { key: 'retention.optionOff', tone: 'neutral' };
-  if (seconds <= 86400) return { key: 'retention.option24h', tone: 'accent' };
-  if (seconds <= 604800) return { key: 'retention.option7d', tone: 'accent' };
-  return { key: 'retention.option30d', tone: 'accent' };
+function retentionPill(seconds: number): { key: RetentionOptionKey; tone: 'accent' | 'neutral' } {
+  return { key: retentionKey(seconds), tone: seconds <= 0 ? 'neutral' : 'accent' };
 }
 
 export default function ChatsScreen() {
@@ -73,6 +70,7 @@ export default function ChatsScreen() {
           body: preview.body,
           sentAt: preview.sentAt,
           direction: preview.direction,
+          kind: preview.kind,
           unread: preview.unread,
           retentionSeconds: convo?.retentionSeconds ?? 86400,
         });
@@ -171,7 +169,17 @@ export default function ChatsScreen() {
         contentContainerStyle={styles.list}
         renderItem={({ item }) => {
           const pill = retentionPill(item.retentionSeconds);
-          const preview = item.direction === 'out' && item.body ? t('chats.you', { text: item.body }) : item.body ?? '';
+          // System rows carry a seconds value in the body; render the localized sentence,
+          // never the raw stored value.
+          const preview =
+            item.kind !== 'text'
+              ? t(systemMessageKey(item.kind, item.direction, item.body), {
+                  name: item.contact.displayName,
+                  value: item.body != null ? t(retentionKey(Number(item.body))) : '',
+                })
+              : item.direction === 'out' && item.body
+                ? t('chats.you', { text: item.body })
+                : item.body ?? '';
           const unreadStyle = item.unread > 0;
           return (
             <Pressable style={styles.row} onPress={() => openChat(item.contact.id)}>

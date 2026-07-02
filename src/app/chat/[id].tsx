@@ -17,23 +17,15 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
-import { Avatar, Card, ChevronLeft, Screen, SendArrow, Text, VerifiedShield } from '@/ui';
+import { Avatar, Button, Card, ChevronLeft, Screen, SendArrow, Text, VerifiedShield } from '@/ui';
 import { Colors, Fonts, Overlay, Radius, Spacing } from '@/constants/theme';
 import { getContact, type Contact } from '@/db/repos/contacts';
 import { getConversationByContact, type Conversation } from '@/db/repos/conversations';
 import { listMessages, type Message } from '@/db/repos/messages';
 import { isDbOpen } from '@/db/client';
 import { subscribeConversationsChanged } from '@/services/data-events';
-import { markRead, sendText } from '@/services/messaging';
-
-type RetentionKey = 'retention.optionOff' | 'retention.option24h' | 'retention.option7d' | 'retention.option30d';
-
-function retentionKey(seconds: number): RetentionKey {
-  if (seconds <= 0) return 'retention.optionOff';
-  if (seconds <= 86400) return 'retention.option24h';
-  if (seconds <= 604800) return 'retention.option7d';
-  return 'retention.option30d';
-}
+import { retentionKey, systemMessageKey } from '@/i18n/system-messages';
+import { acceptRetention, cancelRetention, markRead, sendText } from '@/services/messaging';
 
 type StatusKey =
   | 'conversation.statusSending'
@@ -124,6 +116,18 @@ export default function ConversationScreen() {
     setSending(false);
   }, [draft, contact, conversation, sending, loadMessages]);
 
+  const onAcceptRequest = useCallback(async () => {
+    if (!contact || conversation?.retentionPendingValue == null) return;
+    await acceptRetention({ id: contact.id, handle: contact.handle }, conversation.retentionPendingValue);
+    await loadAll();
+  }, [contact, conversation, loadAll]);
+
+  const onDeclineRequest = useCallback(async () => {
+    if (!contact) return;
+    await cancelRetention({ id: contact.id, handle: contact.handle });
+    await loadAll();
+  }, [contact, loadAll]);
+
   if (!contact) {
     return <Screen contentStyle={styles.screen}>{null}</Screen>;
   }
@@ -162,7 +166,31 @@ export default function ConversationScreen() {
         <Text variant="caption" color="accent" style={styles.bannerText}>
           {t('conversation.retentionBanner', { duration: t(retentionKey(retention)) })}
         </Text>
+        {conversation?.retentionPending && !conversation.retentionPendingIncoming ? (
+          <Text variant="caption" color="textTertiary" style={styles.bannerText}>
+            {t('conversation.retentionBannerPending', {
+              value: t(retentionKey(conversation.retentionPendingValue ?? 0)),
+            })}
+          </Text>
+        ) : null}
       </Card>
+
+      {conversation?.retentionPending && conversation.retentionPendingIncoming ? (
+        <Card tone="accent" style={styles.requestCard}>
+          <Text variant="caption" color="accent" style={styles.bannerText}>
+            {conversation.retentionPendingValue != null && conversation.retentionPendingValue > 0
+              ? t('retention.systemRequestIn', {
+                  name: contact.displayName,
+                  value: t(retentionKey(conversation.retentionPendingValue)),
+                })
+              : t('retention.systemRequestInOff', { name: contact.displayName })}
+          </Text>
+          <View style={styles.requestActions}>
+            <Button label={t('retention.accept')} onPress={onAcceptRequest} style={styles.requestBtn} />
+            <Button label={t('retention.decline')} variant="secondary" onPress={onDeclineRequest} style={styles.requestBtn} />
+          </View>
+        </Card>
+      ) : null}
 
       <KeyboardAvoidingView
         style={styles.flex}
@@ -189,6 +217,18 @@ export default function ConversationScreen() {
             onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
           >
             {messages.map((m) => {
+              if (m.kind !== 'text') {
+                return (
+                  <View key={m.id} style={styles.systemRow}>
+                    <Text variant="caption" color="textTertiary" style={styles.systemText}>
+                      {t(systemMessageKey(m.kind, m.direction, m.body), {
+                        name: contact.displayName,
+                        value: m.body != null ? t(retentionKey(Number(m.body))) : '',
+                      })}
+                    </Text>
+                  </View>
+                );
+              }
               const outgoing = m.direction === 'out';
               return (
                 <View key={m.id} style={[styles.bubbleRow, outgoing ? styles.bubbleRowOut : styles.bubbleRowIn]}>
@@ -262,8 +302,18 @@ const styles = StyleSheet.create({
   headerInfoPressed: { opacity: 0.6 },
   headerText: { flex: 1, gap: 2 },
   nameWrap: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
-  banner: { paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md, marginBottom: Spacing.sm },
+  banner: { paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md, marginBottom: Spacing.sm, gap: Spacing.xxs },
   bannerText: { textAlign: 'center' },
+  requestCard: {
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    marginBottom: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  requestActions: { flexDirection: 'row', gap: Spacing.sm },
+  requestBtn: { flex: 1 },
+  systemRow: { alignItems: 'center', paddingVertical: Spacing.xs, paddingHorizontal: Spacing.lg },
+  systemText: { textAlign: 'center' },
   list: { paddingVertical: Spacing.md, gap: Spacing.sm },
   bubbleRow: { flexDirection: 'row' },
   bubbleRowOut: { justifyContent: 'flex-end' },
