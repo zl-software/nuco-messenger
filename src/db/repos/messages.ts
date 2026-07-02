@@ -71,6 +71,25 @@ export async function updateMessageStatus(id: string, status: MessageStatus): Pr
   await getDb().execute('UPDATE messages SET status = ? WHERE id = ?', [status, id]);
 }
 
+export interface PendingOutbound {
+  id: string;
+  conversationId: string;
+  body: string;
+  handle: string;
+}
+
+// Outgoing text still marked 'sending' was interrupted (the in memory relay queue is lost on
+// app kill). The conversation id is the contact id, so join to recover the peer handle.
+export async function listPendingOutbound(): Promise<PendingOutbound[]> {
+  const result = await getDb().execute(
+    `SELECT m.id, m.conversation_id AS conversationId, m.body_encrypted AS body, c.handle
+     FROM messages m JOIN contacts c ON c.id = m.conversation_id
+     WHERE m.direction = 'out' AND m.kind = 'text' AND m.status = 'sending' AND m.body_encrypted IS NOT NULL
+     ORDER BY m.sent_at`,
+  );
+  return result.rows as unknown as PendingOutbound[];
+}
+
 // Returns the number of rows actually flipped so callers can emit change events only when
 // something changed. The read = 0 predicate is what makes the count 0 on a second call
 // (SQLite counts processed rows even when the value is unchanged).

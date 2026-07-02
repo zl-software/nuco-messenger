@@ -5,7 +5,8 @@
 import { loadAccount, registerParamsFor, generatePreKeyUpload, type Account } from './account';
 import { startRelay, stopRelay, setOnDeliver, setOnRelayStatus, getRelay } from './relay';
 import { emitConversationsChanged } from './data-events';
-import { receiveEnvelope } from './messaging';
+import { receiveEnvelope, resendPendingOutbound } from './messaging';
+import { startExpirySweeper } from './expiry';
 import { resolveServerUrl } from './server';
 import { loadPrefs } from './prefs';
 import { useSession } from '@/state/session';
@@ -48,6 +49,7 @@ export async function goOnlineFirstRun(account: Account, upload: import('@nuco/p
     .ensureReady()
     .then(() => client.publishPreKeys(upload))
     .catch(() => undefined);
+  startExpirySweeper();
   void registerPush();
 }
 
@@ -63,6 +65,10 @@ export async function bringOnline(): Promise<void> {
   startRelay(resolveServerUrl(prefs), account, registerParamsFor(account, { kind: 'none' }));
   void ensurePreKeysPublished();
   if ((await sweepExpired(Date.now())) > 0) emitConversationsChanged();
+  startExpirySweeper();
+  // Re-send anything left 'sending' when the app was last killed (the outbound queue is memory
+  // only). Fire in the background so it does not gate coming online.
+  void resendPendingOutbound();
   void registerPush();
 }
 

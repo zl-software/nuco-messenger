@@ -18,6 +18,7 @@ import { initI18n } from '@/i18n';
 import { useSettings } from '@/state/settings';
 import { useSession } from '@/state/session';
 import { attachAppStateGate, subscribeLock } from '@/lock/lock-controller';
+import { stopExpirySweeper } from '@/services/expiry';
 import { configureNotifications } from '@/transport/push';
 
 void SplashScreen.preventAutoHideAsync();
@@ -52,8 +53,12 @@ export default function RootLayout() {
     const unsub = subscribeLock((status) => {
       setLockStatus(status);
       // The account record carries the transport auth private key. Drop it from UI state on
-      // lock so nothing sensitive lingers there; unlock reloads it via bringOnline.
-      if (status === 'locked') setAccount(null);
+      // lock so nothing sensitive lingers there; unlock reloads it via bringOnline. Stop the
+      // expiry sweeper too: the database is closed while locked.
+      if (status === 'locked') {
+        setAccount(null);
+        stopExpirySweeper();
+      }
     });
     attachAppStateGate();
     return () => {

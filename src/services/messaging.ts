@@ -14,7 +14,13 @@ import {
   setRetentionPending,
   clearRetentionPending,
 } from '@/db/repos/conversations';
-import { insertMessage, markConversationRead, updateMessageStatus, type MessageKind } from '@/db/repos/messages';
+import {
+  insertMessage,
+  listPendingOutbound,
+  markConversationRead,
+  updateMessageStatus,
+  type MessageKind,
+} from '@/db/repos/messages';
 import { getSignal } from './account';
 import { emitConversationsChanged } from './data-events';
 import { getRelay } from './relay';
@@ -87,6 +93,28 @@ export async function sendText(contact: { id: string; handle: string }, text: st
     await updateMessageStatus(id, 'failed');
   }
   emitConversationsChanged(contact.id);
+}
+
+// Re-send messages left in 'sending' after an app kill (the relay's outbound queue lives only
+// in memory). The relay dedupes by (recipient, id), so a message that did reach the relay is
+// not delivered twice. Runs in the background; each send is queued and flushes on connect.
+export async function resendPendingOutbound(): Promise<void> {
+  if (!isUnlocked()) return;
+  let pending;
+  try {
+    pending = await listPendingOutbound();
+  } catch {
+    return;
+  }
+  for (const p of pending) {
+    try {
+      await sendContent(p.handle, { t: 'text', body: p.body }, p.id);
+      await updateMessageStatus(p.id, 'sent');
+    } catch {
+      await updateMessageStatus(p.id, 'failed');
+    }
+    emitConversationsChanged(p.conversationId);
+  }
 }
 
 export async function retrySend(messageId: string, contact: { handle: string }, text: string): Promise<void> {
@@ -227,6 +255,12 @@ async function doReceiveEnvelope(from: string, envelope: MessageEnvelope): Promi
     const contact = await getContactByHandle(from);
     if (!contact) {
       // Unknown sender: ack to clear the relay queue but do not store.
+      relay?.ack(envelope.id);
+      return null;
+    }
+    if (contact.blocked) {
+      // Blocked sender: acknowledge to drain the relay queue, but never decrypt, store, or
+      // surface their message.
       relay?.ack(envelope.id);
       return null;
     }
