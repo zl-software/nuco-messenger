@@ -13,22 +13,8 @@ import {
 } from '@/db/repos/contacts';
 import { getConversation, type Conversation } from '@/db/repos/conversations';
 import { acceptRetention, cancelRetention, requestRetention } from '@/services/messaging';
+import { retentionKey } from '@/i18n/system-messages';
 import { Colors, Overlay, Spacing } from '@/constants/theme';
-
-function retentionKey(seconds: number | null | undefined) {
-  switch (seconds) {
-    case 604800:
-      return 'retention.option7d';
-    case 2592000:
-      return 'retention.option30d';
-    case 0:
-    case null:
-    case undefined:
-      return 'retention.optionOff';
-    default:
-      return 'retention.option24h';
-  }
-}
 
 const RETENTION_OPTIONS = [
   { seconds: 86400, key: 'retention.option24h' },
@@ -148,7 +134,7 @@ export default function ContactDetailScreen() {
               <Text variant="label">{t('contactDetail.disappearingMessages')}</Text>
               <View style={styles.settingValue}>
                 <Text variant="label" color={outgoingPending ? 'accent' : 'textSecondary'}>
-                  {outgoingPending ? t(retentionKey(pendingValue)) : t(retentionKey(retentionSeconds))}
+                  {outgoingPending ? t(retentionKey(pendingValue ?? 0)) : t(retentionKey(retentionSeconds ?? 0))}
                 </Text>
                 {outgoingPending ? (
                   <Text variant="caption" color="textTertiary">
@@ -166,7 +152,7 @@ export default function ContactDetailScreen() {
                 {t('retention.incomingTitle', { name: contact.displayName })}
               </Text>
               <Text variant="bodySecondary" color="textOnCard" style={styles.incomingBody}>
-                {t('retention.incomingBody', { name: contact.displayName, value: t(retentionKey(pendingValue)) })}
+                {t('retention.incomingBody', { name: contact.displayName, value: t(retentionKey(pendingValue ?? 0)) })}
               </Text>
               <View style={styles.incomingActions}>
                 <Button label={t('retention.accept')} onPress={onAcceptIncoming} style={styles.incomingBtn} />
@@ -231,7 +217,7 @@ export default function ContactDetailScreen() {
             <Text variant="bodySecondary" color="textSecondary" style={styles.sheetWaiting}>
               {t('retention.waiting', {
                 name: contact?.displayName ?? '',
-                value: t(retentionKey(pendingValue)),
+                value: t(retentionKey(pendingValue ?? 0)),
               })}
             </Text>
             <Button label={t('retention.cancelRequest')} variant="secondary" onPress={onCancelRetention} />

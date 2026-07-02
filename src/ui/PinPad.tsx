@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Colors, Fonts, Overlay } from '@/constants/theme';
 import { Text } from './Text';
+import { Backspace } from './icons';
 
 export const PIN_LENGTH = 6;
 
@@ -55,7 +56,7 @@ export function PinKeypad({ onDigit, onDelete, showLetters = true }: PinKeypadPr
         if (key === 'del') {
           return (
             <Pressable key={i} style={styles.key} onPress={onDelete} hitSlop={8}>
-              <Text style={styles.del}>{'⌫'}</Text>
+              <Backspace size={26} color={Colors.textSecondary} />
             </Pressable>
           );
         }
@@ -80,5 +81,4 @@ const styles = StyleSheet.create({
   keyFilled: { backgroundColor: Colors.surface2, borderWidth: 1, borderColor: Overlay.hairline },
   digit: { fontFamily: Fonts.medium, fontSize: 28, lineHeight: 36, color: Colors.text, textAlign: 'center', includeFontPadding: false },
   letters: { fontFamily: Fonts.monoMedium, fontSize: 8, lineHeight: 12, letterSpacing: 1.4, color: Colors.textSecondary, marginTop: 1 },
-  del: { fontSize: 24, lineHeight: 30, color: Colors.textSecondary },
 });

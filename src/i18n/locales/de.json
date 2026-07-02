@@ -80,7 +80,8 @@
     "emptyBody": "Scanne den Code eines Kontakts, um einen verifizierten, Ende-zu-Ende-verschlüsselten Chat zu starten.",
     "emptyCta": "Code eines Kontakts scannen",
     "unverified": "Nicht verifiziert, scannen zum Bestätigen",
-    "you": "Du: {{text}}"
+    "you": "Du: {{text}}",
+    "hiddenPreview": "Nachricht"
   },
   "conversation": {
     "verifiedOnline": "verifiziert, online",

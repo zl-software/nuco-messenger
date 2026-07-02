@@ -7,6 +7,7 @@ import { Animated, Easing, Modal, Pressable, StyleSheet, View } from 'react-nati
 
 import { Colors, Overlay, Spacing } from '@/constants/theme';
 import { Text } from './Text';
+import { Close } from './icons';
 
 // Start the sheet fully below the screen before it slides up. Larger than any realistic sheet.
 const HIDDEN_OFFSET = 560;
@@ -65,7 +66,7 @@ export function BottomSheet({ visible, title, onClose, children }: BottomSheetPr
         <View style={styles.header}>
           <Text variant="title">{title}</Text>
           <Pressable style={styles.close} onPress={onClose} hitSlop={8}>
-            <Text style={styles.closeIcon}>{'✕'}</Text>
+            <Close size={18} color={Colors.textSecondary} />
           </Pressable>
         </View>
         {children}
@@ -91,5 +92,4 @@ const styles = StyleSheet.create({
   grabber: { width: 40, height: 5, borderRadius: 3, backgroundColor: 'rgba(242,244,247,0.22)', alignSelf: 'center', marginBottom: Spacing.lg },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.lg },
   close: { width: 30, height: 30, borderRadius: 15, backgroundColor: Overlay.fill, alignItems: 'center', justifyContent: 'center' },
-  closeIcon: { color: Colors.text, fontSize: 14 },
 });

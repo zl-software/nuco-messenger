@@ -18,6 +18,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
+import { MESSAGE_BODY_MAX_LEN } from '@nuco/protocol';
+
 import { Avatar, Button, Card, ChevronLeft, Screen, SendArrow, Text, VerifiedShield } from '@/ui';
 import { Colors, Fonts, Overlay, Radius, Spacing } from '@/constants/theme';
 import { getContact, type Contact } from '@/db/repos/contacts';
@@ -311,6 +313,7 @@ export default function ConversationScreen() {
               placeholder={t('conversation.composerPlaceholder')}
               placeholderTextColor={Colors.textSecondary}
               style={styles.input}
+              maxLength={MESSAGE_BODY_MAX_LEN}
               multiline
             />
           </View>

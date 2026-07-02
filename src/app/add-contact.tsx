@@ -4,7 +4,7 @@ import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 
-import { Button, Card, QrCard, Screen, SegmentedControl, Text, VerifiedShield } from '@/ui';
+import { Button, Card, Close, QrCard, Screen, SegmentedControl, Text, VerifiedShield } from '@/ui';
 import { useSession } from '@/state/session';
 import { addContactFromCard, buildContactCard, parseScannedCode } from '@/services/contacts';
 import { type ContactCard } from '@nuco/protocol';
@@ -38,7 +38,7 @@ export default function AddContactScreen() {
     <Screen edges={['top', 'bottom']} contentStyle={styles.content}>
       <View style={styles.header}>
         <Pressable style={styles.headerBtn} onPress={() => router.back()} hitSlop={8}>
-          <Text style={styles.close}>{'✕'}</Text>
+          <Close size={20} color={Colors.text} />
         </Pressable>
         <Text variant="title">{t('addContact.title')}</Text>
         <View style={styles.headerBtn} />
@@ -217,7 +217,6 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.md,
   },
   headerBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  close: { fontSize: 20, color: Colors.text },
   segment: { paddingHorizontal: Spacing.xl, marginBottom: Spacing.xl },
   showWrap: { alignItems: 'center', paddingHorizontal: Spacing.xl, paddingTop: Spacing.lg },
   identity: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.xl },

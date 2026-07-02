@@ -111,12 +111,19 @@ export interface ConversationPreview {
 }
 
 export async function conversationPreviews(): Promise<ConversationPreview[]> {
+  // Select exactly one latest row per conversation. Ordering by (sent_at, rowid) breaks ties
+  // when two messages share the same millisecond, so a conversation never yields two previews
+  // (which would collide on the FlatList key).
   const result = await getDb().execute(
     `SELECT m.conversation_id, m.body_encrypted AS body, m.direction, m.kind, m.sent_at,
             (SELECT COUNT(*) FROM messages u WHERE u.conversation_id = m.conversation_id AND u.read = 0 AND u.direction = 'in') AS unread
      FROM messages m
-     JOIN (SELECT conversation_id, MAX(sent_at) AS mx FROM messages GROUP BY conversation_id) latest
-       ON latest.conversation_id = m.conversation_id AND latest.mx = m.sent_at
+     WHERE m.rowid = (
+       SELECT mm.rowid FROM messages mm
+       WHERE mm.conversation_id = m.conversation_id
+       ORDER BY mm.sent_at DESC, mm.rowid DESC
+       LIMIT 1
+     )
      ORDER BY m.sent_at DESC`,
   );
   return (

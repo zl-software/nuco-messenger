@@ -25,6 +25,7 @@ import { getConversation } from '@/db/repos/conversations';
 import { isDbOpen } from '@/db/client';
 import { subscribeConversationsChanged } from '@/services/data-events';
 import { retentionKey, systemMessageKey, type RetentionOptionKey } from '@/i18n/system-messages';
+import { useSettings } from '@/state/settings';
 
 interface ChatRow {
   contact: Contact;
@@ -50,6 +51,7 @@ function retentionPill(seconds: number): { key: RetentionOptionKey; tone: 'accen
 export default function ChatsScreen() {
   const { t } = useTranslation();
   const router = useRouter();
+  const showPreview = useSettings((s) => s.showPreview);
   const [rows, setRows] = useState<ChatRow[]>([]);
   const [query, setQuery] = useState('');
 
@@ -170,16 +172,19 @@ export default function ChatsScreen() {
         renderItem={({ item }) => {
           const pill = retentionPill(item.retentionSeconds);
           // System rows carry a seconds value in the body; render the localized sentence,
-          // never the raw stored value.
+          // never the raw stored value. Text previews honor the "show preview" privacy setting:
+          // when off, the list shows a neutral placeholder instead of the message body.
           const preview =
             item.kind !== 'text'
               ? t(systemMessageKey(item.kind, item.direction, item.body), {
                   name: item.contact.displayName,
                   value: item.body != null ? t(retentionKey(Number(item.body))) : '',
                 })
-              : item.direction === 'out' && item.body
-                ? t('chats.you', { text: item.body })
-                : item.body ?? '';
+              : !showPreview
+                ? t('chats.hiddenPreview')
+                : item.direction === 'out' && item.body
+                  ? t('chats.you', { text: item.body })
+                  : item.body ?? '';
           const unreadStyle = item.unread > 0;
           return (
             <Pressable style={styles.row} onPress={() => openChat(item.contact.id)}>

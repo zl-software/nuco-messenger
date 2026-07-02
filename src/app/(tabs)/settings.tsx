@@ -12,6 +12,7 @@ import {
   BottomSheet,
   Button,
   Card,
+  Check,
   ChevronRight,
   SegmentedControl,
   Text,
@@ -343,7 +344,7 @@ export default function SettingsScreen() {
             <Text variant="rowTitle" color={selected ? 'accent' : 'text'}>
               {t(option.key)}
             </Text>
-            {selected ? <Text style={styles.sheetCheck}>{'✓'}</Text> : null}
+            {selected ? <Check size={18} color={Colors.accent} /> : null}
           </Pressable>
         );
       })}
@@ -484,10 +485,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     minHeight: 52,
-  },
-  sheetCheck: {
-    color: Colors.accent,
-    fontSize: 18,
   },
   dangerDetail: {
     marginBottom: Spacing.md,
