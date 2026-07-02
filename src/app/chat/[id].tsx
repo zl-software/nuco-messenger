@@ -115,7 +115,7 @@ export default function ConversationScreen() {
     <Screen contentStyle={styles.screen} edges={['top']}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={8} style={styles.backBtn}>
-          <ChevronLeft size={24} color={Colors.text} />
+          <ChevronLeft size={22} color={Colors.text} />
         </Pressable>
         <Pressable
           onPress={() => router.push({ pathname: '/contact/[id]', params: { id: contact.id } })}
@@ -230,11 +230,13 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
+    gap: Spacing.xs,
     paddingTop: Spacing.sm,
     paddingBottom: Spacing.md,
   },
-  backBtn: { padding: Spacing.xs, marginLeft: -Spacing.xs },
+  // Same 40x40 box as the contact detail header, so the chevron does not jump when
+  // navigating between the two screens.
+  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   headerInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   headerInfoPressed: { opacity: 0.6 },
   headerText: { flex: 1, gap: 2 },
