@@ -13,16 +13,14 @@
       "bundleIdentifier": "com.zlsoftware.nuco",
       "supportsTablet": false,
       "config": {
-        "usesNonExemptEncryption": false
+        "usesNonExemptEncryption": true
       },
       "infoPlist": {
         "NSFaceIDUsageDescription": "Unlock Nuco with Face ID.",
         "NSCameraUsageDescription": "Nuco uses the camera only to scan a contact's code.",
         "UIBackgroundModes": [
-          "remote-notification",
           "remote-notification"
-        ],
-        "ITSAppUsesNonExemptEncryption": false
+        ]
       }
     },
     "android": {
@@ -39,11 +37,7 @@
         "POST_NOTIFICATIONS",
         "USE_BIOMETRIC",
         "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_DATA_SYNC",
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO",
-        "android.permission.USE_BIOMETRIC",
-        "android.permission.USE_FINGERPRINT"
+        "FOREGROUND_SERVICE_DATA_SYNC"
       ]
     },
     "web": {
@@ -68,7 +62,8 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Nuco uses the camera only to scan a contact's code."
+          "cameraPermission": "Nuco uses the camera only to scan a contact's code.",
+          "recordAudioAndroid": false
         }
       ],
       "expo-notifications",
