@@ -51,7 +51,7 @@ export default function CreatePinScreen() {
     async (pin: string) => {
       try {
         await setPin(pin);
-        router.push('/(onboarding)/complete');
+        router.push('/(onboarding)/biometrics');
       } catch {
         setBusy(false);
         setError(true);
