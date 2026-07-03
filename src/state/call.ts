@@ -3,11 +3,11 @@
 
 import { create } from 'zustand';
 
-import { IDLE_CALL_SNAPSHOT, type CallUiSnapshot } from '@/calls/types';
+import { IDLE_CALL_SNAPSHOT, type CallTarget, type CallUiSnapshot } from '@/calls/types';
 
 // Set while the mic soft ask sheet should be visible for a pending outgoing call.
 export interface MicPrompt {
-  contactId: string;
+  contact: CallTarget;
 }
 
 interface CallState extends CallUiSnapshot {

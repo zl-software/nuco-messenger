@@ -3,7 +3,9 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
-import { Avatar, BottomSheet, Button, Card, ChevronLeft, ChevronRight, Screen, Text, Toggle, VerifiedShield } from '@/ui';
+import { Avatar, BottomSheet, Button, Card, ChevronLeft, ChevronRight, Phone, Screen, Text, Toggle, VerifiedShield } from '@/ui';
+import { useStartCall } from '@/calls/use-start-call';
+import { useCall } from '@/state/call';
 import {
   deleteContact,
   getContact,
@@ -30,6 +32,8 @@ export default function ContactDetailScreen() {
   const [contact, setContact] = useState<Contact | null>(null);
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const startCall = useStartCall();
+  const callStatus = useCall((s) => s.status);
 
   const load = useCallback(async () => {
     const [c, conv] = await Promise.all([getContact(id), getConversation(id)]);
@@ -118,11 +122,30 @@ export default function ContactDetailScreen() {
             </Text>
           </View>
 
-          <Button
-            label={t('contactDetail.message')}
-            onPress={() => router.push({ pathname: '/chat/[id]', params: { id: contact.id } })}
-            style={styles.messageCta}
-          />
+          <View style={styles.ctaRow}>
+            <Button
+              label={t('contactDetail.message')}
+              onPress={() => router.push({ pathname: '/chat/[id]', params: { id: contact.id } })}
+              style={styles.ctaBtn}
+            />
+            {contact.blocked ? null : (
+              <Button
+                label={t('call.action')}
+                variant="secondary"
+                icon={<Phone size={18} color={Colors.text} />}
+                onPress={() =>
+                  void startCall({
+                    id: contact.id,
+                    handle: contact.handle,
+                    displayName: contact.displayName,
+                    blocked: contact.blocked,
+                  })
+                }
+                disabled={callStatus !== 'idle'}
+                style={styles.ctaBtn}
+              />
+            )}
+          </View>
 
           <Card style={styles.settingsCard}>
             <View style={styles.settingRow}>
@@ -256,7 +279,8 @@ const styles = StyleSheet.create({
   body: { paddingHorizontal: Spacing.xl, paddingBottom: Spacing.huge },
   hero: { alignItems: 'center', gap: Spacing.sm, paddingTop: Spacing.lg, paddingBottom: Spacing.xl },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  messageCta: { marginBottom: Spacing.lg },
+  ctaRow: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.lg },
+  ctaBtn: { flex: 1 },
   settingsCard: { padding: 0 },
   settingRow: {
     flexDirection: 'row',

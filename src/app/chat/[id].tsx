@@ -20,15 +20,17 @@ import { useTranslation } from 'react-i18next';
 
 import { MESSAGE_BODY_MAX_LEN } from '@nuco/protocol';
 
-import { Avatar, Button, Card, ChevronLeft, Screen, SendArrow, Text, VerifiedShield } from '@/ui';
+import { Avatar, Button, Card, ChevronLeft, Phone, Screen, SendArrow, Text, VerifiedShield } from '@/ui';
 import { Colors, Fonts, Overlay, Radius, Spacing } from '@/constants/theme';
 import { getContact, type Contact } from '@/db/repos/contacts';
 import { getConversationByContact, type Conversation } from '@/db/repos/conversations';
 import { listMessages, type Message } from '@/db/repos/messages';
 import { isDbOpen } from '@/db/client';
 import { subscribeConversationsChanged } from '@/services/data-events';
-import { retentionKey, systemMessageKey } from '@/i18n/system-messages';
+import { callDurationParam, retentionKey, systemMessageKey } from '@/i18n/system-messages';
 import { acceptRetention, cancelRetention, markRead, sendText } from '@/services/messaging';
+import { useStartCall } from '@/calls/use-start-call';
+import { useCall } from '@/state/call';
 
 type StatusKey =
   | 'conversation.statusSending'
@@ -61,6 +63,8 @@ export default function ConversationScreen() {
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const focusedRef = useRef(false);
+  const startCall = useStartCall();
+  const callStatus = useCall((s) => s.status);
 
   const loadMessages = useCallback(async () => {
     if (!id || !isDbOpen()) return;
@@ -198,6 +202,16 @@ export default function ConversationScreen() {
             </Text>
           </View>
         </Pressable>
+        <Pressable
+          onPress={() =>
+            void startCall({ id: contact.id, handle: contact.handle, displayName: contact.displayName, blocked: contact.blocked })
+          }
+          disabled={contact.blocked || callStatus !== 'idle'}
+          style={[styles.callBtn, contact.blocked || callStatus !== 'idle' ? styles.callBtnDisabled : null]}
+          hitSlop={8}
+        >
+          <Phone size={20} color={Colors.text} />
+        </Pressable>
       </View>
 
       <Card tone="accent" style={styles.banner}>
@@ -268,6 +282,7 @@ export default function ConversationScreen() {
                       {t(systemMessageKey(m.kind, m.direction, m.body), {
                         name: contact.displayName,
                         value: m.body != null ? t(retentionKey(Number(m.body))) : '',
+                        duration: callDurationParam(m.kind, m.body),
                       })}
                     </Text>
                   </View>
@@ -343,6 +358,8 @@ const styles = StyleSheet.create({
   // Same 40x40 box as the contact detail header, so the chevron does not jump when
   // navigating between the two screens.
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  callBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  callBtnDisabled: { opacity: 0.4 },
   headerInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   headerInfoPressed: { opacity: 0.6 },
   headerText: { flex: 1, gap: 2 },

@@ -18,6 +18,11 @@ export interface CallContact {
   displayName: string;
 }
 
+// A contact as the call buttons see it (the block flag gates availability).
+export interface CallTarget extends CallContact {
+  blocked: boolean;
+}
+
 export type IceState = 'new' | 'checking' | 'connected' | 'completed' | 'disconnected' | 'failed' | 'closed';
 
 // The native media boundary. One engine per call attempt; close() is final.

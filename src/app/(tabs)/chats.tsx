@@ -24,7 +24,7 @@ import { getContact, type Contact } from '@/db/repos/contacts';
 import { getConversation } from '@/db/repos/conversations';
 import { isDbOpen } from '@/db/client';
 import { subscribeConversationsChanged } from '@/services/data-events';
-import { retentionKey, systemMessageKey, type RetentionOptionKey } from '@/i18n/system-messages';
+import { callDurationParam, retentionKey, systemMessageKey, type RetentionOptionKey } from '@/i18n/system-messages';
 import { useSettings } from '@/state/settings';
 
 interface ChatRow {
@@ -179,6 +179,7 @@ export default function ChatsScreen() {
               ? t(systemMessageKey(item.kind, item.direction, item.body), {
                   name: item.contact.displayName,
                   value: item.body != null ? t(retentionKey(Number(item.body))) : '',
+                  duration: callDurationParam(item.kind, item.body),
                 })
               : !showPreview
                 ? t('chats.hiddenPreview')

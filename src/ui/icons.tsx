@@ -116,6 +116,72 @@ export function Backspace({ size = 24, color = Colors.text }: IconProps) {
   );
 }
 
+export function Phone({ size = 20, color = Colors.text }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.13.96.36 1.9.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0122 16.92z"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+export function PhoneDown({ size = 22, color = Colors.text }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <G rotation={135} origin="12, 12">
+        <Path
+          d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.13.96.36 1.9.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0122 16.92z"
+          stroke={color}
+          strokeWidth={1.8}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </G>
+    </Svg>
+  );
+}
+
+export function MicOff({ size = 20, color = Colors.text }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M2 2l20 20" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
+      <Path
+        d="M9 9v3a3 3 0 005.12 2.12M15 9.34V4a3 3 0 00-5.94-.6"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M17 16.95A7 7 0 015 12v-2m14 0v2c0 .41-.04.82-.11 1.21M12 19v3M8 22h8"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+export function Speaker({ size = 20, color = Colors.text }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M11 5L6 9H2v6h4l5 4V5z" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+      <Path
+        d="M15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+
 export function FaceId({ size = 40, color = Colors.accent }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 62 62" fill="none">

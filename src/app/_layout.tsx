@@ -14,6 +14,7 @@ import * as SplashScreen from 'expo-splash-screen';
 
 import { Colors, Motion } from '@/constants/theme';
 import { fontMap } from '@/ui/fonts';
+import { CallHost } from '@/calls/CallHost';
 import { initI18n } from '@/i18n';
 import { useSettings } from '@/state/settings';
 import { useSession } from '@/state/session';
@@ -87,6 +88,9 @@ export default function RootLayout() {
         >
           <Stack.Screen name="add-contact" options={{ animationDuration: Motion.screen }} />
         </Stack>
+        {/* The call surface lives above the navigator so a ring reaches the user on any
+            screen and cannot be dismissed by navigation. */}
+        <CallHost />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
