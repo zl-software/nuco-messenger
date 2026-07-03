@@ -229,7 +229,11 @@ export class RelayClient {
     // timer so it cannot fire a second openSocket later and orphan this socket.
     this.cancelReconnect();
     this.setStatus(this.reconnectAttempts > 0 ? 'reconnecting' : 'connecting');
-    const ws = new this.opts.WebSocketImpl(this.opts.url);
+    // The handle rides in the URL query (protocol 1.4) so an edge hosted relay can route
+    // the socket to the right mailbox before the first frame. The connect frame still
+    // carries it authoritatively.
+    const sep = this.opts.url.includes('?') ? '&' : '?';
+    const ws = new this.opts.WebSocketImpl(`${this.opts.url}${sep}handle=${encodeURIComponent(this.opts.handle)}`);
     this.ws = ws;
     ws.onopen = () => this.sendFrame({ type: 'connect', protocolVersion: PROTOCOL_VERSION, handle: this.opts.handle });
     ws.onmessage = (ev) => this.onMessage(typeof ev.data === 'string' ? ev.data : String(ev.data));
@@ -404,7 +408,9 @@ export class RelayClient {
   private startHeartbeat(): void {
     this.stopHeartbeat();
     this.heartbeatTimer = setInterval(() => {
-      this.sendFrame({ type: 'ping', ts: Date.now() });
+      // Constant payload (protocol 1.4): identical bytes every ping let the relay answer
+      // from the edge without waking a hibernated mailbox.
+      this.sendFrame({ type: 'ping', ts: 0 });
     }, this.opts.heartbeatMs ?? HEARTBEAT_MS);
   }
 

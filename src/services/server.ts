@@ -1,11 +1,11 @@
 // Resolves the relay WebSocket URL. Local dev builds can point at a local relay via the
-// EXPO_PUBLIC_RELAY_URL env var; otherwise the dev build defaults to nuco-dev and the
-// production build to relay.nuco-messenger.com. A custom server in Settings overrides all.
+// EXPO_PUBLIC_RELAY_URL env var; otherwise both build flavors default to the Workers relay
+// at nuco-server.zlsoftware.at. A custom server in Settings overrides all.
 
 import type { Prefs } from './prefs';
 
-const DEV_DEFAULT = 'wss://nuco-dev.zlsoftware.at';
-const PROD_DEFAULT = 'wss://relay.nuco-messenger.com';
+const DEV_DEFAULT = 'wss://nuco-server.zlsoftware.at';
+const PROD_DEFAULT = 'wss://nuco-server.zlsoftware.at';
 
 // A LAN or loopback host is reached over plain ws:// (a local dev relay has no TLS), while a
 // public hostname defaults to wss://. The user can always type an explicit scheme to override.
