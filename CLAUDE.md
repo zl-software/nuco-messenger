@@ -64,5 +64,5 @@ Shake the phone, tap "Clear Nuco keys & restart" (`src/services/dev.ts`, registe
 ## Relay for testing
 
 Point at a relay with `EXPO_PUBLIC_RELAY_URL=ws://<LAN_IP>:8787 npx expo start --dev-client -c`
-(iOS dev builds allow `ws://` to a LAN IP), or set a custom server in Settings. Defaults: dev
-`wss://nuco-dev.zlsoftware.at`, prod `wss://relay.nuco-messenger.com`.
+(iOS dev builds allow `ws://` to a LAN IP), or set a custom server in Settings. Default for
+both build flavors: `wss://nuco-server.zlsoftware.at` (the Workers relay).
