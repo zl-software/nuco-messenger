@@ -38,6 +38,15 @@ export interface RegisterParams {
 
 export type RelayStatus = 'disconnected' | 'connecting' | 'reconnecting' | 'connected';
 
+// Short lived TURN credentials for a voice call, as issued by the relay (TURN REST
+// scheme). Kept in memory only for the duration of a call, never persisted or logged.
+export interface TurnCredentials {
+  urls: readonly string[];
+  username: string;
+  credential: string;
+  expiresAt: number; // unix seconds
+}
+
 export interface RelayClientOptions {
   url: string;
   handle: string;
@@ -175,6 +184,16 @@ export class RelayClient {
     await this.request((rid) => ({ type: 'deregister', rid }));
   }
 
+  // Fetch short lived TURN credentials for a voice call. Bounded wait so a call attempt
+  // against a relay that just dropped fails fast instead of wedging the call screen.
+  // Rejects with CALLS_UNAVAILABLE when the relay has no TURN configured.
+  async turnCredentials(timeoutMs = 8000): Promise<TurnCredentials> {
+    await this.ensureReady(timeoutMs);
+    const reply = await this.request((rid) => ({ type: 'turnCredentials', rid }));
+    if (reply.type !== 'turnCredentialsResult') throw new Error('unexpected reply to turnCredentials');
+    return { urls: reply.urls, username: reply.username, credential: reply.credential, expiresAt: reply.expiresAt };
+  }
+
   // Hand a sealed envelope to the relay. Resolves when the relay accepts it; queued while
   // offline and flushed on reconnect.
   sendEnvelope(to: string, envelope: MessageEnvelope): Promise<void> {
@@ -256,7 +275,8 @@ export class RelayClient {
         return;
       case 'ok':
       case 'preKeyBundle':
-      case 'preKeyCountResult': {
+      case 'preKeyCountResult':
+      case 'turnCredentialsResult': {
         const rid = msg.rid;
         this.settleRid(rid, (p) => p.resolve(msg));
         return;

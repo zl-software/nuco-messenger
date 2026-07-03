@@ -4,6 +4,7 @@
 
 import { loadAccount, registerParamsFor, generatePreKeyUpload, type Account } from './account';
 import { startRelay, stopRelay, setOnDeliver, setOnRelayStatus, getRelay } from './relay';
+import { initCallService } from './calls';
 import { emitConversationsChanged } from './data-events';
 import { receiveEnvelope, resendPendingOutbound } from './messaging';
 import { startExpirySweeper } from './expiry';
@@ -14,6 +15,9 @@ import { sweepExpired } from '@/db/repos/messages';
 import { registerPush } from '@/transport/push';
 
 function wireRelayCallbacks(): void {
+  // The call controller must be registered before the relay can deliver the first
+  // envelope, or an early call signal would be swallowed by the default handler.
+  initCallService();
   setOnRelayStatus((status) => useSession.getState().setRelayStatus(status));
   setOnDeliver(async (from, envelope) => {
     await receiveEnvelope(from, envelope);

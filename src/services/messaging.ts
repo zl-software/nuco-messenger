@@ -25,9 +25,20 @@ import { getSignal } from './account';
 import { emitConversationsChanged } from './data-events';
 import { getRelay } from './relay';
 import { isUnlocked } from '@/lock/lock-controller';
+import type { CallContact, CallSignal } from '@/calls/types';
 
-function expiryFor(retentionSeconds: number, now: number): number | null {
+export function expiryFor(retentionSeconds: number, now: number): number | null {
   return retentionSeconds > 0 ? now + retentionSeconds * 1000 : null;
+}
+
+// Call signaling handoff. The call service registers its controller here (the same setter
+// pattern services/relay uses for delivery) so messaging never imports the calls service
+// and no import cycle forms. The default swallows signals arriving before init, which
+// cannot happen in practice: boot wires the call service before the relay starts.
+type CallSignalHandler = (from: CallContact, signal: CallSignal, sentAt: number) => Promise<void>;
+let callSignalHandler: CallSignalHandler = async () => undefined;
+export function setCallSignalHandler(fn: CallSignalHandler): void {
+  callSignalHandler = fn;
 }
 
 // A retention negotiation event logged in the timeline. The direction carries the actor
@@ -60,9 +71,9 @@ async function insertSystemMessage(opts: {
   });
 }
 
-// Seal a typed content envelope toward a contact and hand it to the relay. Returns the
-// generated envelope id.
-async function sendContent(handle: string, content: MessageContent, id: string): Promise<void> {
+// Seal a typed content envelope toward a contact and hand it to the relay. Also used by
+// the call service for signaling, so it is exported.
+export async function sendContent(handle: string, content: MessageContent, id: string): Promise<void> {
   const sealed = await getSignal().encrypt(handle, encodeContent(content));
   const relay = getRelay();
   if (!relay) throw new Error('relay not started');
@@ -335,6 +346,21 @@ async function doReceiveEnvelope(from: string, envelope: MessageEnvelope): Promi
         await clearRetentionPending(contact.id);
         break;
       }
+      case 'call/offer':
+      case 'call/answer':
+      case 'call/end':
+        // Signaling is plumbing: no timeline row here. The call controller writes summary
+        // rows at terminal transitions, dedupes by callId, and never throws (a throw here
+        // would leave the envelope unacked and redelivered forever).
+        await callSignalHandler(
+          { id: contact.id, handle: contact.handle, displayName: contact.displayName },
+          content,
+          envelope.sentAt || now,
+        );
+        break;
+      case 'unknown':
+        // Structured content from a newer peer: ack and drop, never render as text.
+        break;
     }
 
     emitConversationsChanged(contact.id);

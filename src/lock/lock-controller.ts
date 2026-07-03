@@ -54,6 +54,22 @@ function persistLockout(): void {
   void saveLockoutState({ failedAttempts, lockoutUntil }).catch(() => undefined);
 }
 
+// An active call defers the AUTO lock only (an explicit lock always wins): the call
+// service registers a predicate here. Injected as a callback so this module stays free of
+// call imports and the lock design stays auditable in one file.
+let autoLockDeferral: (() => boolean) | null = null;
+export function setAutoLockDeferral(fn: (() => boolean) | null): void {
+  autoLockDeferral = fn;
+}
+
+// Runs at the start of lock(), while the db key is still alive, so an in flight call can
+// seal its end signal and write its summary row. It can only delay the lock briefly (the
+// hook bounds its own waits) and can never veto it.
+let preLockHook: (() => Promise<void>) | null = null;
+export function setPreLockHook(fn: (() => Promise<void>) | null): void {
+  preLockHook = fn;
+}
+
 const listeners = new Set<(s: LockStatus) => void>();
 
 function setStatus(next: LockStatus): void {
@@ -136,6 +152,13 @@ export function markUnlockedWithKey(keyB64: string): void {
 }
 
 export async function lock(): Promise<void> {
+  if (preLockHook) {
+    try {
+      await preLockHook();
+    } catch {
+      // Cleanup must never block the lock.
+    }
+  }
   dbKey = null;
   await closeEncryptedDb();
   backgroundedAt = null;
@@ -146,7 +169,7 @@ function onAppStateChange(next: AppStateStatus): void {
   if (next === 'background' || next === 'inactive') {
     if (backgroundedAt === null) backgroundedAt = Date.now();
   } else if (next === 'active') {
-    if (backgroundedAt !== null && Date.now() - backgroundedAt > autoLockMs) {
+    if (backgroundedAt !== null && Date.now() - backgroundedAt > autoLockMs && !(autoLockDeferral?.() ?? false)) {
       void lock();
     }
     backgroundedAt = null;
