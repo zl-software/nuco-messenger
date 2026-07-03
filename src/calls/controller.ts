@@ -53,9 +53,18 @@ interface ActiveCall {
   direction: 'in' | 'out';
   engine: CallEngine | null;
   pendingOfferSdp: string | null; // callee side: the remote offer awaiting answer()
+  offerSendStarted: boolean; // caller side: the offer was handed to the transport (or is in flight)
   activeSince: number | null;
   muted: boolean;
   speaker: boolean;
+}
+
+// What the end-of-call screen shows while status is 'ending' (the live call is already
+// torn down by then).
+interface EndingView {
+  contactId: string;
+  contactName: string;
+  direction: 'in' | 'out';
 }
 
 const RECENT_CALL_IDS_MAX = 20;
@@ -81,6 +90,7 @@ export class CallController {
   private status: CallStatus = 'idle';
   private endReason: CallUiEndReason | null = null;
   private call: ActiveCall | null = null;
+  private endingView: EndingView | null = null;
   private readonly recentlyEnded = new Set<string>();
   private ringTimer: ReturnType<typeof setTimeout> | null = null;
   private connectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -105,11 +115,12 @@ export class CallController {
 
   getSnapshot(): CallUiSnapshot {
     const c = this.call;
+    const ended = this.endingView;
     return {
       status: this.status,
-      contactId: c?.contact.id ?? null,
-      contactName: c?.contact.displayName ?? '',
-      direction: c?.direction ?? null,
+      contactId: c?.contact.id ?? ended?.contactId ?? null,
+      contactName: c?.contact.displayName ?? ended?.contactName ?? '',
+      direction: c?.direction ?? ended?.direction ?? null,
       muted: c?.muted ?? false,
       speaker: c?.speaker ?? false,
       activeSince: c?.activeSince ?? null,
@@ -134,6 +145,9 @@ export class CallController {
   async placeCall(contact: CallContact): Promise<CallAvailability> {
     const availability = await this.checkAvailability(contact);
     if (availability !== 'ok') return availability;
+    // An inbound offer can adopt the slot during the availability awaits; the ring wins,
+    // never clobber it (its ringtone and the caller's pending offer would be orphaned).
+    if (this.call) return 'busy';
 
     const call: ActiveCall = {
       callId: this.deps.newId(),
@@ -141,6 +155,7 @@ export class CallController {
       direction: 'out',
       engine: null,
       pendingOfferSdp: null,
+      offerSendStarted: false,
       activeSince: null,
       muted: false,
       speaker: false,
@@ -174,6 +189,7 @@ export class CallController {
     }
     if (this.call !== call) return 'ok';
 
+    call.offerSendStarted = true;
     try {
       await withTimeout(this.deps.sendSignal(contact.handle, { t: 'call/offer', callId: call.callId, sdp }), this.signalTimeoutMs);
     } catch {
@@ -258,7 +274,15 @@ export class CallController {
     if (!call) return;
     switch (this.status) {
       case 'starting':
-        // The offer has not been sent; the placeCall chain notices the aborted call.
+        // If the offer was handed to the transport it may already be on its way (or queued
+        // behind a reconnect): send the end marker so the peer never ghost rings. The
+        // transport preserves order, so the end always follows the offer.
+        if (call.offerSendStarted) {
+          this.sendEnd('hangup');
+          this.finish('canceled', this.rowFor('call/missed', 'canceled', false));
+          return;
+        }
+        // Nothing signaled yet; the placeCall chain notices the aborted call.
         this.finish('canceled', null);
         return;
       case 'outgoing-ringing':
@@ -331,6 +355,10 @@ export class CallController {
     let row: CallRowInput | null = null;
     switch (this.status) {
       case 'starting':
+        if (call.offerSendStarted) {
+          signal = { t: 'call/end', callId: call.callId, reason: 'hangup' };
+          row = this.rowFor('call/missed', 'canceled', false);
+        }
         break;
       case 'outgoing-ringing':
         signal = { t: 'call/end', callId: call.callId, reason: 'hangup' };
@@ -371,6 +399,7 @@ export class CallController {
     this.teardown(call);
     this.status = 'idle';
     this.endReason = null;
+    this.endingView = null;
     this.emit();
   }
 
@@ -381,14 +410,20 @@ export class CallController {
     const call = this.call;
 
     if (call) {
-      if (call.contact.handle === from.handle && call.direction === 'out' && this.status === 'outgoing-ringing') {
-        // Glare: both sides called each other. The smaller callId wins on both sides.
+      const glareEligible =
+        call.contact.handle === from.handle &&
+        call.direction === 'out' &&
+        (this.status === 'outgoing-ringing' || this.status === 'starting');
+      if (glareEligible) {
+        // Glare: both sides called each other (their offer can land while ours is still
+        // being prepared or sent). The smaller callId wins on both sides.
         if (callOfferWins(call.callId, callId)) {
           this.remember(callId);
           return;
         }
         // We lose: silently abandon our offer (no signal, the peer derives the same
-        // result) and answer theirs instead. Both users pressed call; do not ring.
+        // result) and answer theirs instead. Both users pressed call; do not ring. An
+        // in flight placeCall chain aborts on the this.call generation check.
         this.clearTimers();
         try {
           call.engine?.close();
@@ -400,10 +435,14 @@ export class CallController {
         this.adoptIncoming(from, callId, sdp, { autoAnswer: true });
         return;
       }
-      // Busy: some other call is in progress. Auto decline and log the missed attempt.
+      // Busy: another call is in progress. Auto decline; log the missed attempt only for
+      // a third party (a crossed offer from the very contact we are already talking to is
+      // glare residue or redelivery, and a missed row for it would be noise).
       this.remember(callId);
       void this.deps.sendSignal(from.handle, { t: 'call/end', callId, reason: 'busy' }).catch(() => undefined);
-      await this.writeRow({ callId, contactId: from.id, kind: 'call/missed', direction: 'in', body: null, unread: true });
+      if (call.contact.handle !== from.handle) {
+        await this.writeRow({ callId, contactId: from.id, kind: 'call/missed', direction: 'in', body: null, unread: true });
+      }
       return;
     }
 
@@ -425,6 +464,7 @@ export class CallController {
       direction: 'in',
       engine: null,
       pendingOfferSdp: sdp,
+      offerSendStarted: false,
       activeSince: null,
       muted: false,
       speaker: false,
@@ -576,6 +616,9 @@ export class CallController {
     const call = this.call;
     if (!call) return;
     if (row) void this.writeRow(row);
+    // Captured before teardown nulls the call, so the brief end state still shows who the
+    // call was with.
+    this.endingView = { contactId: call.contact.id, contactName: call.contact.displayName, direction: call.direction };
     this.teardown(call);
     this.endReason = reason;
     this.setStatus('ending');
@@ -583,6 +626,7 @@ export class CallController {
       this.lingerTimer = null;
       if (this.status !== 'ending') return;
       this.endReason = null;
+      this.endingView = null;
       this.setStatus('idle');
     }, this.endedLingerMs);
   }
@@ -632,6 +676,9 @@ export class CallController {
       clearTimeout(this.lingerTimer);
       this.lingerTimer = null;
     }
+    // A new call replaces any lingering end state.
+    this.endingView = null;
+    if (this.status === 'ending') this.endReason = null;
   }
   private clearTimers(): void {
     this.clearRing();

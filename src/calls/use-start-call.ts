@@ -39,17 +39,21 @@ export async function beginCall(contact: CallTarget, t: TranslateFn): Promise<vo
 }
 
 export function useStartCall(): (contact: CallTarget) => Promise<void> {
-  const [micPermission, requestMicPermission] = useMicrophonePermissions();
+  // The hook's cached snapshot only refreshes per mount, and a grant that happened through
+  // CallHost's sheet (a different hook instance) would not reach a still mounted screen.
+  // Read a fresh status at tap time; the snapshot is only the fallback.
+  const [micPermission, , getMicPermission] = useMicrophonePermissions();
   const { t } = useTranslation();
   const setMicPrompt = useCall((s) => s.setMicPrompt);
 
   return useCallback(
     async (contact: CallTarget) => {
-      if (micPermission?.granted) {
+      const permission = (await getMicPermission().catch(() => null)) ?? micPermission;
+      if (permission?.granted) {
         await beginCall(contact, t);
         return;
       }
-      if (micPermission && !micPermission.canAskAgain) {
+      if (permission && !permission.canAskAgain) {
         Alert.alert(t('call.micDeniedTitle'), t('call.micDeniedBody'));
         return;
       }
@@ -57,6 +61,6 @@ export function useStartCall(): (contact: CallTarget) => Promise<void> {
       // prompt is granted.
       setMicPrompt({ contact });
     },
-    [micPermission, t, setMicPrompt],
+    [micPermission, getMicPermission, t, setMicPrompt],
   );
 }

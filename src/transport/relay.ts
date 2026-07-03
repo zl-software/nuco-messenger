@@ -7,6 +7,7 @@
 import {
   PROTOCOL_VERSION,
   ErrorCode,
+  type ProtocolVersion,
   type ServerMessage,
   type ClientMessage,
   type MessageEnvelope,
@@ -86,6 +87,10 @@ export class RelayClient {
   private registerParams?: RegisterParams;
   private pendingChallenge: string | null = null;
   private didTryRegister = false;
+  // The relay's own version from the connected frame, used for minor feature negotiation
+  // (a relay answers unknown frame TYPES with a rid-less MALFORMED_MESSAGE, never a typed
+  // reply, so new frames must be gated on the advertised minor).
+  private serverVersion: ProtocolVersion | null = null;
 
   constructor(private readonly opts: RelayClientOptions) {
     this.registerParams = opts.registerOnConnect;
@@ -186,9 +191,14 @@ export class RelayClient {
 
   // Fetch short lived TURN credentials for a voice call. Bounded wait so a call attempt
   // against a relay that just dropped fails fast instead of wedging the call screen.
-  // Rejects with CALLS_UNAVAILABLE when the relay has no TURN configured.
+  // Rejects with CALLS_UNAVAILABLE when the relay has no TURN configured or predates the
+  // frame (a pre 1.3 relay would answer with a rid-less MALFORMED_MESSAGE and the request
+  // would only die by timeout).
   async turnCredentials(timeoutMs = 8000): Promise<TurnCredentials> {
     await this.ensureReady(timeoutMs);
+    if (this.serverVersion && this.serverVersion.minor < 3) {
+      throw new Error(ErrorCode.CallsUnavailable);
+    }
     const reply = await this.request((rid) => ({ type: 'turnCredentials', rid }));
     if (reply.type !== 'turnCredentialsResult') throw new Error('unexpected reply to turnCredentials');
     return { urls: reply.urls, username: reply.username, credential: reply.credential, expiresAt: reply.expiresAt };
@@ -265,6 +275,7 @@ export class RelayClient {
     }
     switch (msg.type) {
       case 'connected':
+        this.serverVersion = msg.protocolVersion;
         void this.onConnected(msg.challenge);
         return;
       case 'authenticated':

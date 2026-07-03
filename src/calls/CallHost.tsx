@@ -5,7 +5,7 @@
 // before the lock lands.
 
 import { useEffect, useState } from 'react';
-import { BackHandler, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, BackHandler, Pressable, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMicrophonePermissions } from 'expo-camera';
@@ -97,7 +97,13 @@ export function CallHost() {
             if (!contact) return;
             void requestMicPermission().then((res) => {
               useCall.getState().setMicPrompt(null);
-              if (res.granted) void beginCall(contact, t);
+              if (res.granted) {
+                void beginCall(contact, t);
+              } else if (!res.canAskAgain) {
+                // The OS will not prompt again (permanently denied): point at settings
+                // instead of failing silently.
+                Alert.alert(t('call.micDeniedTitle'), t('call.micDeniedBody'));
+              }
             });
           }}
         />

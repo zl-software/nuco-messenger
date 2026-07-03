@@ -215,6 +215,60 @@ async function main(): Promise<void> {
     check(a.rows.length === 1 && b.rows.length === 1, 'glare: exactly one row per side');
   }
 
+  // 5b. Glare during the starting phase: an offer landing while the local attempt is
+  // still fetching TURN resolves via the tiebreak instead of a spurious busy.
+  {
+    const bus = new SignalBus();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const a = makeParticipant(bus, 'alice', {
+      newId: () => 'z-starting-glare',
+      getTurnCredentials: async () => {
+        await gate;
+        return TEST_TURN;
+      },
+    });
+    const b = makeParticipant(bus, 'bob', { newId: () => 'a-starting-glare' });
+    void a.ctrl.placeCall(b.contact); // parked in 'starting' on the TURN gate
+    await waitFor(() => a.status() === 'starting');
+    void b.ctrl.placeCall(a.contact); // bob's offer lands while alice is still starting
+    await waitFor(() => a.ctrl.getSnapshot().direction === 'in');
+    release();
+    await waitFor(() => a.status() === 'active' && b.status() === 'active');
+    check(b.ctrl.getSnapshot().direction === 'out', 'starting-glare: winner keeps the call');
+    check(!b.history.some((s) => s.endReason === 'busy'), 'starting-glare: no spurious busy');
+    b.ctrl.hangUp();
+    await waitFor(() => a.status() === 'idle' && b.status() === 'idle');
+    check(a.rows.length === 1 && b.rows.length === 1, 'starting-glare: one row per side');
+  }
+
+  // 5c. An inbound offer adopted while placeCall is still inside its availability checks
+  // wins the slot; the outgoing attempt yields as busy and the ring survives.
+  {
+    const bus = new SignalBus();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const a = makeParticipant(bus, 'alice', {
+      hasSession: async () => {
+        await gate;
+        return true;
+      },
+    });
+    const b = makeParticipant(bus, 'bob');
+    const placed = a.ctrl.placeCall(b.contact); // parked inside checkAvailability
+    await a.ctrl.handleCallSignal(b.contact, { t: 'call/offer', callId: 'race-1', sdp: 'v=0 x' }, Date.now());
+    check(a.status() === 'incoming-ringing', 'race: inbound offer adopted during availability check');
+    release();
+    check((await placed) === 'busy', 'race: outgoing attempt yields to the ring');
+    check(a.status() === 'incoming-ringing', 'race: ring not clobbered');
+    a.ctrl.decline();
+    await waitFor(() => a.status() === 'idle');
+  }
+
   // 6. Stale offer: never rings, logs an unread missed call.
   {
     const { a, b } = freshPair();

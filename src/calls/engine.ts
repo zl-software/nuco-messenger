@@ -34,6 +34,10 @@ const events = (target: RTCPeerConnection): PeerConnectionEvents => target as un
 export function createNativeEngine(): CallEngine {
   let pc: RTCPeerConnection | null = null;
   let mic: MediaStream | null = null;
+  // close() must be final even against an in flight start(): getUserMedia can resolve
+  // after the controller has already torn the call down, and a stream assigned then would
+  // hold the microphone open with nothing left to release it.
+  let closed = false;
 
   const waitForGathering = (): Promise<void> =>
     new Promise((resolve) => {
@@ -64,11 +68,23 @@ export function createNativeEngine(): CallEngine {
 
   return {
     async start(turn: TurnCredentials, onIceState: (s: IceState) => void): Promise<void> {
+      let stream: MediaStream;
       try {
-        mic = await mediaDevices.getUserMedia({ audio: true, video: false });
+        stream = await mediaDevices.getUserMedia({ audio: true, video: false });
       } catch {
         throw new MicUnavailableError();
       }
+      if (closed) {
+        for (const track of stream.getTracks()) {
+          try {
+            track.stop();
+          } catch {
+            // Track teardown is best effort.
+          }
+        }
+        throw new Error('engine closed');
+      }
+      mic = stream;
       pc = new RTCPeerConnection({
         iceServers: [{ urls: [...turn.urls], username: turn.username, credential: turn.credential }],
         iceTransportPolicy: 'relay',
@@ -107,6 +123,7 @@ export function createNativeEngine(): CallEngine {
     },
 
     close(): void {
+      closed = true;
       for (const track of mic?.getTracks() ?? []) {
         try {
           track.stop();
