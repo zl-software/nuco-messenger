@@ -10,6 +10,10 @@ polyfills, camera, push, foreground service). Build with `eas build --profile de
 ## Rules
 
 - All Signal specific code stays behind `src/crypto/signal.ts` (the v1 library is UNAUDITED).
+- All WebRTC specific code stays behind `src/calls/engine.ts`, the audio session behind
+  `src/calls/audio.ts`. The call state machine (`src/calls/controller.ts`) is Node pure and
+  must stay importable without native modules (the e2e harness and `calls:check` depend on
+  it). Calls are relay only ICE; call signaling is sealed `call/*` message content.
 - The lock gates DECRYPTION, not just the UI. The SQLCipher key lives only in memory.
 - No hardcoded user facing strings: use i18n (`useTranslation`, keys in
   `src/i18n/locales/en.json` and `de.json`, parity checked). English default, German shipped.
@@ -22,6 +26,7 @@ polyfills, camera, push, foreground service). Build with `eas build --profile de
 npm run typecheck
 npm run crypto:selftest   # full crypto core on Node, native AND noble providers
 npm run i18n:check        # en/de key parity
+npm run calls:check       # call state machine on Node with fake engines
 ```
 
 ## On-device gotchas (do not regress)
@@ -44,10 +49,12 @@ npm run i18n:check        # en/de key parity
 ## Structure
 
 `crypto/` (Signal, providers, identity, safety number, SAS, store, secure storage, byte and
-text polyfills), `db/` (op-sqlite SQLCipher, repos), `transport/` (relay client, push),
-`lock/` (controller, biometrics, pin), `services/` (account, boot, contacts, messaging,
-onboarding, prefs, relay, server, dev), `state/` (zustand, UI only never keys), `ui/` (design
-system), `constants/theme.ts` (dark tokens), `i18n/`, `app/` (routes).
+text polyfills), `calls/` (controller state machine, webrtc engine, audio session, CallHost
+overlay, fake engine for Node), `db/` (op-sqlite SQLCipher, repos), `transport/` (relay
+client, push), `lock/` (controller, biometrics, pin), `services/` (account, boot, calls,
+contacts, messaging, onboarding, prefs, relay, server, dev), `state/` (zustand, UI only
+never keys), `ui/` (design system), `constants/theme.ts` (dark tokens), `i18n/`, `app/`
+(routes).
 
 ## Dev reset
 
