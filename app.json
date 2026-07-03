@@ -18,8 +18,10 @@
       "infoPlist": {
         "NSFaceIDUsageDescription": "Unlock Nuco with Face ID.",
         "NSCameraUsageDescription": "Nuco uses the camera only to scan a contact's code.",
+        "NSMicrophoneUsageDescription": "Nuco uses the microphone only during calls. Audio is end to end encrypted.",
         "UIBackgroundModes": [
-          "remote-notification"
+          "remote-notification",
+          "audio"
         ]
       }
     },
@@ -37,7 +39,13 @@
         "POST_NOTIFICATIONS",
         "USE_BIOMETRIC",
         "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_DATA_SYNC"
+        "FOREGROUND_SERVICE_DATA_SYNC",
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS",
+        "BLUETOOTH_CONNECT"
+      ],
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW"
       ]
     },
     "web": {
@@ -71,6 +79,12 @@
         "expo-local-authentication",
         {
           "faceIDPermission": "Unlock Nuco with Face ID."
+        }
+      ],
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "microphonePermission": "Nuco uses the microphone only during calls. Audio is end to end encrypted."
         }
       ]
     ],
