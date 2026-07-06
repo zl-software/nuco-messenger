@@ -57,6 +57,20 @@
     "completeBody": "Scan a friend's code in person to start your first encrypted chat.",
     "completeCta": "Open Nuco"
   },
+  "tutorial": {
+    "skip": "Skip",
+    "next": "Next",
+    "done": "Get started",
+    "settingsRow": "How Nuco works",
+    "connectTitle": "Connect in person",
+    "connectBody": "Add a contact by showing your QR code or scanning theirs, face to face. That first scan ties their name to their real encryption keys.",
+    "verifyTitle": "Verify who you talk to",
+    "verifyBody": "Every chat has a safety number that both phones can show. If it matches in person, no one is sitting between you.",
+    "disappearTitle": "Messages that disappear",
+    "disappearBody": "Each chat has a timer that removes messages on both phones. Changing it is a request the other side has to accept first.",
+    "privacyTitle": "Private by design",
+    "privacyBody": "The lock guards the keys that decrypt your messages, and messages live only on your devices. The server only ever sees sealed ciphertext."
+  },
   "lock": {
     "faceIdTitle": "Face ID",
     "faceIdBody": "Look at your phone to unlock",

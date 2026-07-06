@@ -57,6 +57,20 @@
     "completeBody": "Scanne den Code eines Freundes persönlich, um deinen ersten verschlüsselten Chat zu starten.",
     "completeCta": "Nuco öffnen"
   },
+  "tutorial": {
+    "skip": "Überspringen",
+    "next": "Weiter",
+    "done": "Loslegen",
+    "settingsRow": "So funktioniert Nuco",
+    "connectTitle": "Persönlich verbinden",
+    "connectBody": "Füge einen Kontakt hinzu, indem du deinen QR-Code zeigst oder seinen scannst, von Angesicht zu Angesicht. Dieser erste Scan verknüpft den Namen mit den echten Verschlüsselungsschlüsseln.",
+    "verifyTitle": "Verifiziere, mit wem du sprichst",
+    "verifyBody": "Jeder Chat hat eine Sicherheitsnummer, die beide Handys anzeigen können. Stimmt sie beim persönlichen Vergleich überein, sitzt niemand zwischen euch.",
+    "disappearTitle": "Nachrichten, die verschwinden",
+    "disappearBody": "Jeder Chat hat einen Timer, der Nachrichten auf beiden Handys entfernt. Eine Änderung ist eine Anfrage, die die andere Seite zuerst akzeptieren muss.",
+    "privacyTitle": "Privat von Grund auf",
+    "privacyBody": "Die Sperre schützt die Schlüssel, die deine Nachrichten entschlüsseln, und Nachrichten leben nur auf deinen Geräten. Der Server sieht immer nur versiegelten Chiffretext."
+  },
   "lock": {
     "faceIdTitle": "Face ID",
     "faceIdBody": "Schau auf dein Handy, um es zu entsperren",

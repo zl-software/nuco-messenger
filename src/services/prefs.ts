@@ -10,6 +10,7 @@ const PREFS_KEY = 'nuco.prefs';
 
 export interface Prefs {
   onboardingComplete: boolean;
+  tutorialSeen: boolean;
   language: LanguageSetting;
   serverMode: 'default' | 'custom';
   customServer: string | null;
@@ -24,6 +25,7 @@ export interface Prefs {
 
 export const DEFAULT_PREFS: Prefs = {
   onboardingComplete: false,
+  tutorialSeen: false,
   language: 'system',
   serverMode: 'default',
   customServer: null,

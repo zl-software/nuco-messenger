@@ -262,6 +262,8 @@ export default function SettingsScreen() {
           </View>
         </View>
         <Divider />
+        <NavRow label={t('tutorial.settingsRow')} onPress={() => router.push('/tutorial')} />
+        <Divider />
         <View style={styles.rowStack}>
           <Text variant="rowTitle" color="text">
             {t('settings.about')}

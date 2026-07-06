@@ -15,6 +15,7 @@ interface SettingsState extends Prefs {
 function extractPrefs(state: SettingsState): Prefs {
   return {
     onboardingComplete: state.onboardingComplete,
+    tutorialSeen: state.tutorialSeen,
     language: state.language,
     serverMode: state.serverMode,
     customServer: state.customServer,

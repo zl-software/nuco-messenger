@@ -17,7 +17,7 @@ export default function CompleteScreen() {
     setBusy(true);
     try {
       await completeOnboarding();
-      router.replace('/(tabs)/chats');
+      router.replace('/tutorial');
     } catch {
       setBusy(false);
     }

@@ -43,7 +43,8 @@ export default function LockScreen() {
   const succeed = useCallback(() => {
     // The database is already open, so the chats tab can render local data immediately. Do not
     // wait on bringOnline (account load, relay connect); let it finish in the background.
-    router.replace('/(tabs)/chats');
+    // Existing installs funnel through here, so an unseen tutorial is shown after unlock.
+    router.replace(useSettings.getState().tutorialSeen ? '/(tabs)/chats' : '/tutorial');
     void bringOnline();
   }, [router]);
 
