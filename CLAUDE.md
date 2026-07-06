@@ -45,6 +45,8 @@ npm run calls:check       # call state machine on Node with fake engines
 - SQLCipher cannot reopen an existing file with a new key: call `deleteDatabaseFile()` before
   provisioning a fresh account.
 - `EXPO_PUBLIC_*` env vars are inlined at bundle time; restart Metro with `-c` to change them.
+- i18next `_one`/`_other` plural resolution needs `Intl.PluralRules`, which Hermes does not
+  guarantee. Select the suffixed key by hand (see `retentionLabel` in `src/i18n/system-messages.ts`).
 
 ## Structure
 
