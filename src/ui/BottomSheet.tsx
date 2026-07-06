@@ -3,7 +3,7 @@
 // the sheet slides up, so the dim never appears to travel up with the sheet.
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Animated, Easing, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Animated, Easing, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { Colors, Overlay, Spacing } from '@/constants/theme';
 import { Text } from './Text';
@@ -61,16 +61,25 @@ export function BottomSheet({ visible, title, onClose, children }: BottomSheetPr
       <Animated.View style={[styles.backdrop, { opacity: backdrop }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
       </Animated.View>
-      <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
-        <View style={styles.grabber} />
-        <View style={styles.header}>
-          <Text variant="title">{title}</Text>
-          <Pressable style={styles.close} onPress={onClose} hitSlop={8}>
-            <Close size={18} color={Colors.textSecondary} />
-          </Pressable>
-        </View>
-        {children}
-      </Animated.View>
+      {/* The keyboard would cover a bottom anchored sheet: the avoiding view pads the modal
+          from below so a sheet with an input rides above it. box-none keeps backdrop taps
+          reaching the scrim Pressable. */}
+      <KeyboardAvoidingView
+        style={StyleSheet.absoluteFill}
+        pointerEvents="box-none"
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
+          <View style={styles.grabber} />
+          <View style={styles.header}>
+            <Text variant="title">{title}</Text>
+            <Pressable style={styles.close} onPress={onClose} hitSlop={8}>
+              <Close size={18} color={Colors.textSecondary} />
+            </Pressable>
+          </View>
+          {children}
+        </Animated.View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

@@ -29,7 +29,7 @@ import { getConversationByContact, type Conversation } from '@/db/repos/conversa
 import { listMessages, type Message } from '@/db/repos/messages';
 import { isDbOpen } from '@/db/client';
 import { subscribeConversationsChanged } from '@/services/data-events';
-import { callDurationParam, retentionKey, systemMessageKey } from '@/i18n/system-messages';
+import { callDurationParam, retentionLabel, systemMessageKey } from '@/i18n/system-messages';
 import { acceptRetention, cancelRetention, markRead, sendText } from '@/services/messaging';
 import { useStartCall } from '@/calls/use-start-call';
 import { useCall } from '@/state/call';
@@ -237,12 +237,12 @@ export default function ConversationScreen() {
 
       <Card tone="accent" style={styles.banner}>
         <Text variant="caption" color="accent" style={styles.bannerText}>
-          {t('conversation.retentionBanner', { duration: t(retentionKey(retention)) })}
+          {t('conversation.retentionBanner', { duration: retentionLabel(retention, t) })}
         </Text>
         {conversation?.retentionPending && !conversation.retentionPendingIncoming ? (
           <Text variant="caption" color="textTertiary" style={styles.bannerText}>
             {t('conversation.retentionBannerPending', {
-              value: t(retentionKey(conversation.retentionPendingValue ?? 0)),
+              value: retentionLabel(conversation.retentionPendingValue ?? 0, t),
             })}
           </Text>
         ) : null}
@@ -254,7 +254,7 @@ export default function ConversationScreen() {
             {conversation.retentionPendingValue != null && conversation.retentionPendingValue > 0
               ? t('retention.systemRequestIn', {
                   name: contact.displayName,
-                  value: t(retentionKey(conversation.retentionPendingValue)),
+                  value: retentionLabel(conversation.retentionPendingValue, t),
                 })
               : t('retention.systemRequestInOff', { name: contact.displayName })}
           </Text>
@@ -307,7 +307,7 @@ export default function ConversationScreen() {
                       <Text variant="caption" color="textTertiary" style={styles.systemText}>
                         {t(systemMessageKey(m.kind, m.direction, m.body), {
                           name: contact.displayName,
-                          value: m.body != null ? t(retentionKey(Number(m.body))) : '',
+                          value: m.body != null ? retentionLabel(Number(m.body), t) : '',
                           duration: callDurationParam(m.kind, m.body),
                         })}
                       </Text>

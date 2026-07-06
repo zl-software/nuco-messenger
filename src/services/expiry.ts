@@ -7,7 +7,9 @@ import { sweepExpired } from '@/db/repos/messages';
 import { emitConversationsChanged } from './data-events';
 import { isUnlocked } from '@/lock/lock-controller';
 
-const SWEEP_INTERVAL_MS = 30_000;
+// Short enough that a 1 minute custom timer (the shortest pickable) never lingers visibly
+// past its expiry; the DELETE is indexed and cheap.
+const SWEEP_INTERVAL_MS = 10_000;
 
 let timer: ReturnType<typeof setInterval> | null = null;
 

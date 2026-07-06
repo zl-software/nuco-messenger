@@ -3,7 +3,9 @@ import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
-import { Avatar, BottomSheet, Button, Card, ChevronLeft, ChevronRight, Phone, Screen, Text, Toggle, VerifiedShield } from '@/ui';
+import { RETENTION_MAX_SECONDS } from '@nuco/protocol';
+
+import { Avatar, BottomSheet, Button, Card, ChevronLeft, ChevronRight, Phone, Screen, SegmentedControl, Text, TextField, Toggle, VerifiedShield } from '@/ui';
 import { useStartCall } from '@/calls/use-start-call';
 import { useCall } from '@/state/call';
 import {
@@ -16,7 +18,7 @@ import {
 import { getConversation, type Conversation } from '@/db/repos/conversations';
 import { acceptRetention, cancelRetention, requestRetention } from '@/services/messaging';
 import { emitConversationsChanged } from '@/services/data-events';
-import { retentionKey } from '@/i18n/system-messages';
+import { retentionLabel } from '@/i18n/system-messages';
 import { Colors, Overlay, Spacing } from '@/constants/theme';
 
 const RETENTION_OPTIONS = [
@@ -26,6 +28,17 @@ const RETENTION_OPTIONS = [
   { seconds: 0, key: 'retention.optionOff' },
 ] as const;
 
+// Units for the custom duration picker, ascending. The protocol caps a retention value at
+// RETENTION_MAX_SECONDS (365 days), which bounds the input regardless of unit.
+const CUSTOM_UNITS = [
+  { key: 'minutes', seconds: 60, labelKey: 'retention.unitMinutes' },
+  { key: 'hours', seconds: 3600, labelKey: 'retention.unitHours' },
+  { key: 'days', seconds: 86400, labelKey: 'retention.unitDays' },
+  { key: 'weeks', seconds: 604800, labelKey: 'retention.unitWeeks' },
+] as const;
+
+type CustomUnit = (typeof CUSTOM_UNITS)[number]['key'];
+
 export default function ContactDetailScreen() {
   const { t } = useTranslation();
   const router = useRouter();
@@ -33,6 +46,9 @@ export default function ContactDetailScreen() {
   const [contact, setContact] = useState<Contact | null>(null);
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [customMode, setCustomMode] = useState(false);
+  const [customValue, setCustomValue] = useState('');
+  const [customUnit, setCustomUnit] = useState<CustomUnit>('hours');
   const startCall = useStartCall();
   const callStatus = useCall((s) => s.status);
 
@@ -55,6 +71,40 @@ export default function ContactDetailScreen() {
   const pendingValue = conversation?.retentionPendingValue ?? null;
   const outgoingPending = !!conversation?.retentionPending && !conversation.retentionPendingIncoming;
   const incomingPending = !!conversation?.retentionPending && conversation.retentionPendingIncoming;
+
+  const isCustomCurrent =
+    retentionSeconds != null &&
+    retentionSeconds > 0 &&
+    !RETENTION_OPTIONS.some((opt) => opt.seconds === retentionSeconds);
+
+  const customParsed = parseInt(customValue, 10);
+  const customUnitSeconds = CUSTOM_UNITS.find((u) => u.key === customUnit)?.seconds ?? 3600;
+  const customSeconds = Number.isInteger(customParsed) ? customParsed * customUnitSeconds : 0;
+  const customValid =
+    Number.isInteger(customParsed) && customParsed >= 1 && customSeconds <= RETENTION_MAX_SECONDS;
+
+  function openSheet() {
+    setCustomMode(false);
+    setSheetOpen(true);
+  }
+
+  function openCustom() {
+    // Pre-fill from the current value when it is already a custom one, decomposed by the
+    // largest unit that divides it exactly (matching how retentionLabel renders it).
+    const current = retentionSeconds;
+    const unit =
+      isCustomCurrent && current != null
+        ? [...CUSTOM_UNITS].reverse().find((u) => current % u.seconds === 0)
+        : undefined;
+    if (unit && current != null) {
+      setCustomUnit(unit.key);
+      setCustomValue(String(current / unit.seconds));
+    } else {
+      setCustomUnit('hours');
+      setCustomValue('');
+    }
+    setCustomMode(true);
+  }
 
   async function onToggleMute(value: boolean) {
     if (!contact) return;
@@ -174,11 +224,11 @@ export default function ContactDetailScreen() {
               <Toggle value={contact.muted} onChange={onToggleMute} />
             </View>
             <View style={styles.divider} />
-            <Pressable style={styles.settingRow} onPress={() => setSheetOpen(true)}>
+            <Pressable style={styles.settingRow} onPress={openSheet}>
               <Text variant="label">{t('contactDetail.disappearingMessages')}</Text>
               <View style={styles.settingValue}>
                 <Text variant="label" color={outgoingPending ? 'accent' : 'textSecondary'}>
-                  {outgoingPending ? t(retentionKey(pendingValue ?? 0)) : t(retentionKey(retentionSeconds ?? 0))}
+                  {retentionLabel(outgoingPending ? pendingValue ?? 0 : retentionSeconds ?? 0, t)}
                 </Text>
                 {outgoingPending ? (
                   <Text variant="caption" color="textTertiary">
@@ -196,7 +246,7 @@ export default function ContactDetailScreen() {
                 {t('retention.incomingTitle', { name: contact.displayName })}
               </Text>
               <Text variant="bodySecondary" color="textOnCard" style={styles.incomingBody}>
-                {t('retention.incomingBody', { name: contact.displayName, value: t(retentionKey(pendingValue ?? 0)) })}
+                {t('retention.incomingBody', { name: contact.displayName, value: retentionLabel(pendingValue ?? 0, t) })}
               </Text>
               <View style={styles.incomingActions}>
                 <Button label={t('retention.accept')} onPress={onAcceptIncoming} style={styles.incomingBtn} />
@@ -261,10 +311,33 @@ export default function ContactDetailScreen() {
             <Text variant="bodySecondary" color="textSecondary" style={styles.sheetWaiting}>
               {t('retention.waiting', {
                 name: contact?.displayName ?? '',
-                value: t(retentionKey(pendingValue ?? 0)),
+                value: retentionLabel(pendingValue ?? 0, t),
               })}
             </Text>
             <Button label={t('retention.cancelRequest')} variant="secondary" onPress={onCancelRetention} />
+          </View>
+        ) : customMode ? (
+          <View style={styles.customPanel}>
+            <TextField
+              value={customValue}
+              onChangeText={(v) => setCustomValue(v.replace(/\D+/g, '').slice(0, 6))}
+              keyboardType="number-pad"
+              placeholder={t('retention.customValuePlaceholder')}
+            />
+            <SegmentedControl
+              options={CUSTOM_UNITS.map((u) => ({ key: u.key, label: t(u.labelKey) }))}
+              value={customUnit}
+              onChange={(key) => setCustomUnit(key as CustomUnit)}
+            />
+            <Text variant="caption" color="textTertiary">
+              {t('retention.customRange')}
+            </Text>
+            <Button
+              label={t('retention.set')}
+              disabled={!customValid}
+              onPress={() => void onPickRetention(customSeconds)}
+            />
+            <Button label={t('common.back')} variant="ghost" onPress={() => setCustomMode(false)} />
           </View>
         ) : (
           <View>
@@ -279,6 +352,23 @@ export default function ContactDetailScreen() {
                 </Pressable>
               );
             })}
+            <Pressable style={styles.optionRow} onPress={openCustom}>
+              <Text variant="label" color={isCustomCurrent ? 'accent' : 'text'}>
+                {t('retention.customOption')}
+              </Text>
+              <View style={styles.customCurrent}>
+                {isCustomCurrent && retentionSeconds != null ? (
+                  <Text variant="label" color="textSecondary">
+                    {retentionLabel(retentionSeconds, t)}
+                  </Text>
+                ) : null}
+                {isCustomCurrent ? (
+                  <View style={styles.selectedDot} />
+                ) : (
+                  <ChevronRight size={18} color={Colors.textTertiary} />
+                )}
+              </View>
+            </Pressable>
           </View>
         )}
       </BottomSheet>
@@ -333,6 +423,8 @@ const styles = StyleSheet.create({
   deleteRow: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.lg },
   sheetPending: { gap: Spacing.lg },
   sheetWaiting: {},
+  customPanel: { gap: Spacing.lg },
+  customCurrent: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   optionRow: {
     flexDirection: 'row',
     alignItems: 'center',

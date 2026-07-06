@@ -24,7 +24,7 @@ import { getContact, type Contact } from '@/db/repos/contacts';
 import { getConversation } from '@/db/repos/conversations';
 import { isDbOpen } from '@/db/client';
 import { subscribeConversationsChanged } from '@/services/data-events';
-import { callDurationParam, retentionKey, systemMessageKey, type RetentionOptionKey } from '@/i18n/system-messages';
+import { callDurationParam, retentionLabel, systemMessageKey } from '@/i18n/system-messages';
 import { useSettings } from '@/state/settings';
 
 interface ChatRow {
@@ -42,10 +42,6 @@ function formatTime(ms: number): string {
   const h = d.getHours();
   const m = d.getMinutes();
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-}
-
-function retentionPill(seconds: number): { key: RetentionOptionKey; tone: 'accent' | 'neutral' } {
-  return { key: retentionKey(seconds), tone: seconds <= 0 ? 'neutral' : 'accent' };
 }
 
 export default function ChatsScreen() {
@@ -170,7 +166,6 @@ export default function ChatsScreen() {
         keyExtractor={(r) => r.contact.id}
         contentContainerStyle={styles.list}
         renderItem={({ item }) => {
-          const pill = retentionPill(item.retentionSeconds);
           // System rows carry a seconds value in the body; render the localized sentence,
           // never the raw stored value. Text previews honor the "show preview" privacy setting:
           // when off, the list shows a neutral placeholder instead of the message body.
@@ -178,7 +173,7 @@ export default function ChatsScreen() {
             item.kind !== 'text'
               ? t(systemMessageKey(item.kind, item.direction, item.body), {
                   name: item.contact.displayName,
-                  value: item.body != null ? t(retentionKey(Number(item.body))) : '',
+                  value: item.body != null ? retentionLabel(Number(item.body), t) : '',
                   duration: callDurationParam(item.kind, item.body),
                 })
               : !showPreview
@@ -212,7 +207,10 @@ export default function ChatsScreen() {
                     {preview}
                   </Text>
                   <View style={styles.rowMeta}>
-                    <Pill label={t(pill.key)} tone={pill.tone} />
+                    <Pill
+                      label={retentionLabel(item.retentionSeconds, t)}
+                      tone={item.retentionSeconds <= 0 ? 'neutral' : 'accent'}
+                    />
                     {item.unread > 0 ? (
                       <View style={styles.badge}>
                         <Text variant="caption" color="accentInk" style={styles.badgeText}>
