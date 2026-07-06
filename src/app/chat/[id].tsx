@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AppState,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -14,6 +15,7 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -65,6 +67,25 @@ export default function ConversationScreen() {
   const focusedRef = useRef(false);
   const startCall = useStartCall();
   const callStatus = useCall((s) => s.status);
+  const insets = useSafeAreaInsets();
+
+  // The composer needs the bottom safe area inset only while the keyboard is closed: open,
+  // the keyboard itself is the bottom edge and the inset would float the composer above it.
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => setKeyboardVisible(true),
+    );
+    const hide = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setKeyboardVisible(false),
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   const loadMessages = useCallback(async () => {
     if (!id || !isDbOpen()) return;
@@ -256,7 +277,7 @@ export default function ConversationScreen() {
         keyboardVerticalOffset={8}
       >
         {messages.length === 0 ? (
-          <View style={styles.empty}>
+          <Pressable style={styles.empty} onPress={() => Keyboard.dismiss()}>
             <View style={styles.emptyTile}>
               <VerifiedShield size={36} color={Colors.accent} />
             </View>
@@ -266,61 +287,72 @@ export default function ConversationScreen() {
             <Text variant="bodySecondary" color="textSecondary" style={styles.center}>
               {t('conversation.emptyVerifiedBody')}
             </Text>
-          </View>
+          </Pressable>
         ) : (
           <ScrollView
             ref={scrollRef}
             style={styles.flex}
-            contentContainerStyle={styles.list}
+            contentContainerStyle={styles.listGrow}
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
             onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
           >
-            {messages.map((m) => {
-              if (m.kind !== 'text') {
+            {/* Bubbles carry no touch handlers, so a tap anywhere on the thread (including
+                below the last message, via flexGrow) lands here and closes the keyboard.
+                Scroll gestures still win over the press via responder negotiation. */}
+            <Pressable style={styles.list} onPress={() => Keyboard.dismiss()}>
+              {messages.map((m) => {
+                if (m.kind !== 'text') {
+                  return (
+                    <View key={m.id} style={styles.systemRow}>
+                      <Text variant="caption" color="textTertiary" style={styles.systemText}>
+                        {t(systemMessageKey(m.kind, m.direction, m.body), {
+                          name: contact.displayName,
+                          value: m.body != null ? t(retentionKey(Number(m.body))) : '',
+                          duration: callDurationParam(m.kind, m.body),
+                        })}
+                      </Text>
+                    </View>
+                  );
+                }
+                const outgoing = m.direction === 'out';
                 return (
-                  <View key={m.id} style={styles.systemRow}>
-                    <Text variant="caption" color="textTertiary" style={styles.systemText}>
-                      {t(systemMessageKey(m.kind, m.direction, m.body), {
-                        name: contact.displayName,
-                        value: m.body != null ? t(retentionKey(Number(m.body))) : '',
-                        duration: callDurationParam(m.kind, m.body),
-                      })}
-                    </Text>
-                  </View>
-                );
-              }
-              const outgoing = m.direction === 'out';
-              return (
-                <View key={m.id} style={[styles.bubbleRow, outgoing ? styles.bubbleRowOut : styles.bubbleRowIn]}>
-                  {outgoing ? (
-                    <View style={styles.bubbleWrapOut}>
-                      <LinearGradient
-                        colors={[Colors.outgoingBubbleTop, Colors.outgoingBubbleBottom]}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 0, y: 1 }}
-                        style={[styles.bubble, styles.bubbleOut]}
-                      >
-                        <Text variant="body" style={styles.outText}>
+                  <View key={m.id} style={[styles.bubbleRow, outgoing ? styles.bubbleRowOut : styles.bubbleRowIn]}>
+                    {outgoing ? (
+                      <View style={styles.bubbleWrapOut}>
+                        <LinearGradient
+                          colors={[Colors.outgoingBubbleTop, Colors.outgoingBubbleBottom]}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 0, y: 1 }}
+                          style={[styles.bubble, styles.bubbleOut]}
+                        >
+                          <Text variant="body" style={styles.outText}>
+                            {m.body}
+                          </Text>
+                        </LinearGradient>
+                        <Text variant="caption" color={m.status === 'failed' ? 'danger' : 'textTertiary'} style={styles.statusText}>
+                          {t(statusKey(m.status))}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={[styles.bubble, styles.bubbleIn]}>
+                        <Text variant="body" color="text">
                           {m.body}
                         </Text>
-                      </LinearGradient>
-                      <Text variant="caption" color={m.status === 'failed' ? 'danger' : 'textTertiary'} style={styles.statusText}>
-                        {t(statusKey(m.status))}
-                      </Text>
-                    </View>
-                  ) : (
-                    <View style={[styles.bubble, styles.bubbleIn]}>
-                      <Text variant="body" color="text">
-                        {m.body}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              );
-            })}
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </Pressable>
           </ScrollView>
         )}
 
-        <View style={styles.composer}>
+        <View
+          style={[
+            styles.composer,
+            { paddingBottom: keyboardVisible ? Spacing.md : Math.max(insets.bottom, Spacing.md) },
+          ]}
+        >
           <View style={styles.inputWrap}>
             <TextInput
               value={draft}
@@ -376,7 +408,8 @@ const styles = StyleSheet.create({
   requestBtn: { flex: 1 },
   systemRow: { alignItems: 'center', paddingVertical: Spacing.xs, paddingHorizontal: Spacing.lg },
   systemText: { textAlign: 'center' },
-  list: { paddingVertical: Spacing.md, gap: Spacing.sm },
+  listGrow: { flexGrow: 1 },
+  list: { flexGrow: 1, paddingVertical: Spacing.md, gap: Spacing.sm },
   bubbleRow: { flexDirection: 'row' },
   bubbleRowOut: { justifyContent: 'flex-end' },
   bubbleRowIn: { justifyContent: 'flex-start' },
@@ -403,12 +436,13 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
   },
   center: { textAlign: 'center' },
+  // The bottom padding is applied inline: the safe area inset when the keyboard is closed,
+  // Spacing.md against the keyboard when open.
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: Spacing.sm,
-    paddingVertical: Spacing.sm,
-    paddingBottom: Spacing.md,
+    paddingTop: Spacing.sm,
   },
   inputWrap: {
     flex: 1,
