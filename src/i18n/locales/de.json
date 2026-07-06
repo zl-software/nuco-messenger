@@ -255,7 +255,9 @@
     "disappearingMessages": "Verschwindende Nachrichten",
     "muteNotifications": "Benachrichtigungen stummschalten",
     "blockContact": "Kontakt blockieren",
-    "deleteContact": "Kontakt löschen"
+    "deleteContact": "Kontakt löschen",
+    "deleteConfirmTitle": "Diesen Kontakt löschen?",
+    "deleteConfirmBody": "Dies entfernt {{name}}, eure Unterhaltung und alle Nachrichten von diesem Gerät. Es kann nicht rückgängig gemacht werden."
   },
   "settings": {
     "title": "Einstellungen",

@@ -255,7 +255,9 @@
     "disappearingMessages": "Disappearing messages",
     "muteNotifications": "Mute notifications",
     "blockContact": "Block contact",
-    "deleteContact": "Delete contact"
+    "deleteContact": "Delete contact",
+    "deleteConfirmTitle": "Delete this contact?",
+    "deleteConfirmBody": "This removes {{name}}, your conversation, and all its messages from this device. It cannot be undone."
   },
   "settings": {
     "title": "Settings",

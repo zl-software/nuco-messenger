@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
@@ -15,6 +15,7 @@ import {
 } from '@/db/repos/contacts';
 import { getConversation, type Conversation } from '@/db/repos/conversations';
 import { acceptRetention, cancelRetention, requestRetention } from '@/services/messaging';
+import { emitConversationsChanged } from '@/services/data-events';
 import { retentionKey } from '@/i18n/system-messages';
 import { Colors, Overlay, Spacing } from '@/constants/theme';
 
@@ -67,10 +68,30 @@ export default function ContactDetailScreen() {
     setContact({ ...contact, blocked: value });
   }
 
-  async function onDelete() {
+  function onDelete() {
     if (!contact) return;
-    await deleteContact(contact.id);
-    router.back();
+    Alert.alert(
+      t('contactDetail.deleteConfirmTitle'),
+      t('contactDetail.deleteConfirmBody', { name: contact.displayName }),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('contactDetail.deleteContact'),
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              await deleteContact(contact.id);
+              emitConversationsChanged();
+              // Not router.back(): this screen is often reached through a replace chain
+              // (scan, verify), where back() is a no-op and would leave a detail page for
+              // a row that no longer exists.
+              router.replace('/(tabs)/contacts');
+            })();
+          },
+        },
+      ],
+      { cancelable: true },
+    );
   }
 
   async function onPickRetention(seconds: number) {
