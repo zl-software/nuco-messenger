@@ -13,6 +13,9 @@ import {
   setRetention,
   setRetentionPending,
   clearRetentionPending,
+  setScreenshotProtection,
+  setScreenshotPending,
+  clearScreenshotPending,
 } from '@/db/repos/conversations';
 import {
   insertMessage,
@@ -283,6 +286,84 @@ export async function cancelRetention(contact: { id: string; handle: string }): 
   await sendControl(contact.handle, { t: 'retention/cancel' });
 }
 
+// ---------------------------------------------------------------------------
+// Screenshot protection request and accept flow. Same shape as retention: a change is a
+// request the other side accepts before it applies on either device. Enforcement itself
+// lives in the UI layer (src/ui/use-screenshot-guard.ts); this service only negotiates
+// and mirrors the agreed state.
+// ---------------------------------------------------------------------------
+
+export async function requestScreenshotProtection(contact: { id: string; handle: string }, on: boolean): Promise<void> {
+  const now = Date.now();
+  // Ensure the conversation row exists: setScreenshotPending is an UPDATE (a no-op without
+  // one) and the system message insert needs the foreign key target.
+  const convo = await ensureConversation(contact.id, contact.id, 86400, now);
+  // Idempotent, mirroring requestRetention: a rapid double tap or a stale screen must not
+  // log a second request row or resend while our own request is already pending.
+  if (convo.screenshotPending && !convo.screenshotPendingIncoming) return;
+  await setScreenshotPending(contact.id, on, false);
+  await insertSystemMessage({
+    id: Crypto.randomUUID(),
+    conversationId: contact.id,
+    kind: 'screenshot/request',
+    direction: 'out',
+    value: on ? 1 : 0,
+    retentionSeconds: convo.retentionSeconds,
+    sentAt: now,
+    expiryFrom: now,
+    read: true,
+  });
+  emitConversationsChanged(contact.id);
+  await sendControl(contact.handle, { t: 'screenshot/request', on });
+}
+
+export async function acceptScreenshotProtection(contact: { id: string; handle: string }, on: boolean): Promise<void> {
+  const now = Date.now();
+  // Only meaningful while the peer's request is actually pending: a double tap or a stale
+  // screen would otherwise double-log the change and send a duplicate accept.
+  const convo = await getConversation(contact.id);
+  if (!convo?.screenshotPending || !convo.screenshotPendingIncoming) return;
+  await setScreenshotProtection(contact.id, on);
+  await insertSystemMessage({
+    id: Crypto.randomUUID(),
+    conversationId: contact.id,
+    kind: 'screenshot/changed',
+    direction: 'out',
+    value: on ? 1 : 0,
+    retentionSeconds: convo.retentionSeconds,
+    sentAt: now,
+    expiryFrom: now,
+    read: true,
+  });
+  emitConversationsChanged(contact.id);
+  await sendControl(contact.handle, { t: 'screenshot/accept', on });
+}
+
+// Used both when the requester cancels their own pending request and when the recipient
+// declines an incoming one: in both cases the peer should drop the pending change.
+export async function cancelScreenshotProtection(contact: { id: string; handle: string }): Promise<void> {
+  const now = Date.now();
+  const convo = await getConversation(contact.id);
+  await clearScreenshotPending(contact.id);
+  if (convo?.screenshotPending) {
+    await insertSystemMessage({
+      id: Crypto.randomUUID(),
+      conversationId: contact.id,
+      // Pending from the peer means the local user is declining their request; pending
+      // from us means the local user is withdrawing their own.
+      kind: convo.screenshotPendingIncoming ? 'screenshot/declined' : 'screenshot/canceled',
+      direction: 'out',
+      value: null,
+      retentionSeconds: convo.retentionSeconds,
+      sentAt: now,
+      expiryFrom: now,
+      read: true,
+    });
+  }
+  emitConversationsChanged(contact.id);
+  await sendControl(contact.handle, { t: 'screenshot/cancel' });
+}
+
 // Inbound delivery is fire-and-forget from the relay, so two messages can arrive back to back.
 // Serialize processing so we never run two decrypts against the same ratchet concurrently,
 // which could corrupt session state.
@@ -411,6 +492,55 @@ async function doReceiveEnvelope(from: string, envelope: MessageEnvelope): Promi
           });
         }
         await clearRetentionPending(contact.id);
+        break;
+      }
+      case 'screenshot/request':
+        await setScreenshotPending(contact.id, content.on, true);
+        await insertSystemMessage({
+          id: envelope.id,
+          conversationId: contact.id,
+          kind: 'screenshot/request',
+          direction: 'in',
+          value: content.on ? 1 : 0,
+          retentionSeconds: convo.retentionSeconds,
+          sentAt: envelope.sentAt || now,
+          expiryFrom: now,
+          read: false,
+        });
+        break;
+      case 'screenshot/accept':
+        await setScreenshotProtection(contact.id, content.on);
+        await insertSystemMessage({
+          id: envelope.id,
+          conversationId: contact.id,
+          kind: 'screenshot/changed',
+          direction: 'in',
+          value: content.on ? 1 : 0,
+          retentionSeconds: convo.retentionSeconds,
+          sentAt: envelope.sentAt || now,
+          expiryFrom: now,
+          read: false,
+        });
+        break;
+      case 'screenshot/cancel': {
+        // Same disambiguation as retention/cancel: our request pending means the peer
+        // declined it; their own pending means they withdrew it; nothing pending means a
+        // stale duplicate, log nothing.
+        if (convo.screenshotPending) {
+          const declined = !convo.screenshotPendingIncoming;
+          await insertSystemMessage({
+            id: envelope.id,
+            conversationId: contact.id,
+            kind: declined ? 'screenshot/declined' : 'screenshot/canceled',
+            direction: 'in',
+            value: null,
+            retentionSeconds: convo.retentionSeconds,
+            sentAt: envelope.sentAt || now,
+            expiryFrom: now,
+            read: !declined,
+          });
+        }
+        await clearScreenshotPending(contact.id);
         break;
       }
       case 'call/offer':

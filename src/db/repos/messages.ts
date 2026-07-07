@@ -5,18 +5,24 @@ import { getDb } from '../client';
 export type MessageDirection = 'in' | 'out';
 export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'failed';
 
-// System kinds log the retention negotiation and calls in the timeline. For retention rows
-// the direction column carries the actor ('out' means the local user did it, 'in' means the
-// peer); for call rows it carries the call direction (who initiated), so a missed incoming
-// call counts as unread like any incoming message. Call rows use the callId as the row id,
-// making every redelivery or double write an INSERT OR IGNORE no-op; their body holds the
-// duration in seconds for completed calls, or a marker ('busy' | 'canceled' | 'error').
+// System kinds log the retention and screenshot protection negotiations and calls in the
+// timeline. For retention and screenshot rows the direction column carries the actor ('out'
+// means the local user did it, 'in' means the peer); screenshot rows carry '1' or '0' in the
+// body (the requested or applied on/off state). For call rows the direction carries the call
+// direction (who initiated), so a missed incoming call counts as unread like any incoming
+// message. Call rows use the callId as the row id, making every redelivery or double write
+// an INSERT OR IGNORE no-op; their body holds the duration in seconds for completed calls,
+// or a marker ('busy' | 'canceled' | 'error').
 export type MessageKind =
   | 'text'
   | 'retention/request'
   | 'retention/changed'
   | 'retention/declined'
   | 'retention/canceled'
+  | 'screenshot/request'
+  | 'screenshot/changed'
+  | 'screenshot/declined'
+  | 'screenshot/canceled'
   | 'call/outgoing'
   | 'call/incoming'
   | 'call/missed'

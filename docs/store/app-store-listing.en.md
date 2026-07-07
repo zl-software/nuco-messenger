@@ -23,6 +23,8 @@ Why people choose Nuco:
 - End to end encryption on every message, with in person verification so you can confirm you
   are really talking to your contact.
 - Disappearing messages: set a timer and messages delete themselves from both devices.
+- Screenshot protection: agree with your contact to block screenshots and screen recording in
+  a chat, on both devices.
 - On device only: your history lives in an encrypted database on your phone. There is no cloud
   backup to leak or subpoena.
 - App lock: unlock with Face ID, Touch ID, or a PIN. Locking closes the encrypted database and

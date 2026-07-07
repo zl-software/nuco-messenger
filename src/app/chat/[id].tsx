@@ -30,7 +30,15 @@ import { listMessages, type Message } from '@/db/repos/messages';
 import { isDbOpen } from '@/db/client';
 import { subscribeConversationsChanged } from '@/services/data-events';
 import { callDurationParam, retentionLabel, systemMessageKey } from '@/i18n/system-messages';
-import { acceptRetention, cancelRetention, markRead, sendText } from '@/services/messaging';
+import {
+  acceptRetention,
+  acceptScreenshotProtection,
+  cancelRetention,
+  cancelScreenshotProtection,
+  markRead,
+  sendText,
+} from '@/services/messaging';
+import { useScreenshotGuard } from '@/ui/use-screenshot-guard';
 import { useStartCall } from '@/calls/use-start-call';
 import { useCall } from '@/state/call';
 
@@ -68,6 +76,11 @@ export default function ConversationScreen() {
   const startCall = useStartCall();
   const callStatus = useCall((s) => s.status);
   const insets = useSafeAreaInsets();
+
+  // Enforce the negotiated screenshot protection while this conversation is on screen. The
+  // conversation state stays live via subscribeConversationsChanged below, so an accept
+  // arriving mid conversation starts blocking without a refocus.
+  useScreenshotGuard(conversation?.screenshotProtection === true, 'nuco-chat');
 
   // The composer needs the bottom safe area inset only while the keyboard is closed: open,
   // the keyboard itself is the bottom edge and the inset would float the composer above it.
@@ -191,6 +204,17 @@ export default function ConversationScreen() {
     void respond(() => cancelRetention({ id: contact.id, handle: contact.handle }));
   }, [contact, respond]);
 
+  const onAcceptScreenshotRequest = useCallback(() => {
+    if (!contact || conversation?.screenshotPendingValue == null) return;
+    const on = conversation.screenshotPendingValue;
+    void respond(() => acceptScreenshotProtection({ id: contact.id, handle: contact.handle }, on));
+  }, [contact, conversation, respond]);
+
+  const onDeclineScreenshotRequest = useCallback(() => {
+    if (!contact) return;
+    void respond(() => cancelScreenshotProtection({ id: contact.id, handle: contact.handle }));
+  }, [contact, respond]);
+
   if (!contact) {
     return <Screen contentStyle={styles.screen}>{null}</Screen>;
   }
@@ -246,6 +270,16 @@ export default function ConversationScreen() {
             })}
           </Text>
         ) : null}
+        {conversation?.screenshotProtection ? (
+          <Text variant="caption" color="accent" style={styles.bannerText}>
+            {t('screenshot.bannerActive')}
+          </Text>
+        ) : null}
+        {conversation?.screenshotPending && !conversation.screenshotPendingIncoming ? (
+          <Text variant="caption" color="textTertiary" style={styles.bannerText}>
+            {t('screenshot.bannerPending')}
+          </Text>
+        ) : null}
       </Card>
 
       {conversation?.retentionPending && conversation.retentionPendingIncoming ? (
@@ -264,6 +298,34 @@ export default function ConversationScreen() {
               label={t('retention.decline')}
               variant="secondary"
               onPress={onDeclineRequest}
+              disabled={responding}
+              style={styles.requestBtn}
+            />
+          </View>
+        </Card>
+      ) : null}
+
+      {conversation?.screenshotPending && conversation.screenshotPendingIncoming ? (
+        <Card tone="accent" style={styles.requestCard}>
+          <Text variant="caption" color="accent" style={styles.bannerText}>
+            {t(
+              conversation.screenshotPendingValue === true
+                ? 'screenshot.incomingTitleOn'
+                : 'screenshot.incomingTitleOff',
+              { name: contact.displayName },
+            )}
+          </Text>
+          <View style={styles.requestActions}>
+            <Button
+              label={t('screenshot.accept')}
+              onPress={onAcceptScreenshotRequest}
+              disabled={responding}
+              style={styles.requestBtn}
+            />
+            <Button
+              label={t('screenshot.decline')}
+              variant="secondary"
+              onPress={onDeclineScreenshotRequest}
               disabled={responding}
               style={styles.requestBtn}
             />

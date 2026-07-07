@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -17,9 +17,17 @@ import {
   type Contact,
 } from '@/db/repos/contacts';
 import { getConversation, type Conversation } from '@/db/repos/conversations';
-import { acceptRetention, cancelRetention, requestRetention } from '@/services/messaging';
-import { emitConversationsChanged } from '@/services/data-events';
+import {
+  acceptRetention,
+  acceptScreenshotProtection,
+  cancelRetention,
+  cancelScreenshotProtection,
+  requestRetention,
+  requestScreenshotProtection,
+} from '@/services/messaging';
+import { emitConversationsChanged, subscribeConversationsChanged } from '@/services/data-events';
 import { retentionLabel } from '@/i18n/system-messages';
+import { useScreenshotGuard } from '@/ui/use-screenshot-guard';
 import { Colors, Overlay, Spacing } from '@/constants/theme';
 
 const RETENTION_OPTIONS = [
@@ -47,6 +55,7 @@ export default function ContactDetailScreen() {
   const [contact, setContact] = useState<Contact | null>(null);
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [screenshotSheetOpen, setScreenshotSheetOpen] = useState(false);
   const [customMode, setCustomMode] = useState(false);
   const [customValue, setCustomValue] = useState('');
   const [customUnit, setCustomUnit] = useState<CustomUnit>('hours');
@@ -65,6 +74,15 @@ export default function ContactDetailScreen() {
     }, [load]),
   );
 
+  // Keep the conversation state live while the screen is open: a peer's accept or request
+  // must update the screenshot enforcement and the pending cards without a refocus.
+  useEffect(() => {
+    return subscribeConversationsChanged((cid) => {
+      if (cid !== undefined && cid !== id) return;
+      void load();
+    });
+  }, [id, load]);
+
   const isVerified = contact != null && isMutuallyVerified(contact);
   const waitingForPeer = contact?.localConfirmedAt != null && contact.peerConfirmedAt == null;
   const verifiedDate =
@@ -73,6 +91,15 @@ export default function ContactDetailScreen() {
   const pendingValue = conversation?.retentionPendingValue ?? null;
   const outgoingPending = !!conversation?.retentionPending && !conversation.retentionPendingIncoming;
   const incomingPending = !!conversation?.retentionPending && conversation.retentionPendingIncoming;
+
+  const screenshotOn = conversation?.screenshotProtection === true;
+  const screenshotPendingValue = conversation?.screenshotPendingValue ?? null;
+  const screenshotOutgoingPending = !!conversation?.screenshotPending && !conversation.screenshotPendingIncoming;
+  const screenshotIncomingPending = !!conversation?.screenshotPending && conversation.screenshotPendingIncoming;
+
+  // This screen shows the protected conversation's content (name, verification state), so it
+  // is covered by the same agreement as the chat screen itself.
+  useScreenshotGuard(screenshotOn, 'nuco-contact');
 
   const isCustomCurrent =
     retentionSeconds != null &&
@@ -172,6 +199,32 @@ export default function ContactDetailScreen() {
     await load();
   }
 
+  async function onRequestScreenshot() {
+    setScreenshotSheetOpen(false);
+    if (!contact) return;
+    await requestScreenshotProtection({ id: contact.id, handle: contact.handle }, !screenshotOn);
+    await load();
+  }
+
+  async function onCancelScreenshot() {
+    setScreenshotSheetOpen(false);
+    if (!contact) return;
+    await cancelScreenshotProtection({ id: contact.id, handle: contact.handle });
+    await load();
+  }
+
+  async function onAcceptScreenshotIncoming() {
+    if (!contact || screenshotPendingValue == null) return;
+    await acceptScreenshotProtection({ id: contact.id, handle: contact.handle }, screenshotPendingValue);
+    await load();
+  }
+
+  async function onDeclineScreenshotIncoming() {
+    if (!contact) return;
+    await cancelScreenshotProtection({ id: contact.id, handle: contact.handle });
+    await load();
+  }
+
   return (
     <Screen edges={['top', 'bottom']} contentStyle={styles.content}>
       <View style={styles.header}>
@@ -240,6 +293,25 @@ export default function ContactDetailScreen() {
                 <ChevronRight size={18} color={Colors.textTertiary} />
               </View>
             </Pressable>
+            <View style={styles.divider} />
+            <Pressable style={styles.settingRow} onPress={() => setScreenshotSheetOpen(true)}>
+              <Text variant="label">{t('contactDetail.screenshotProtection')}</Text>
+              <View style={styles.settingValue}>
+                <Text variant="label" color={screenshotOutgoingPending ? 'accent' : 'textSecondary'}>
+                  {t(
+                    (screenshotOutgoingPending ? screenshotPendingValue === true : screenshotOn)
+                      ? 'screenshot.stateOn'
+                      : 'screenshot.stateOff',
+                  )}
+                </Text>
+                {screenshotOutgoingPending ? (
+                  <Text variant="caption" color="textTertiary">
+                    {t('screenshot.pending')}
+                  </Text>
+                ) : null}
+                <ChevronRight size={18} color={Colors.textTertiary} />
+              </View>
+            </Pressable>
           </Card>
 
           {incomingPending ? (
@@ -256,6 +328,28 @@ export default function ContactDetailScreen() {
                   label={t('retention.decline')}
                   variant="secondary"
                   onPress={onDeclineIncoming}
+                  style={styles.incomingBtn}
+                />
+              </View>
+            </Card>
+          ) : null}
+
+          {screenshotIncomingPending ? (
+            <Card tone="accent" style={styles.incomingCard}>
+              <Text variant="label" color="accent">
+                {t(screenshotPendingValue === true ? 'screenshot.incomingTitleOn' : 'screenshot.incomingTitleOff', {
+                  name: contact.displayName,
+                })}
+              </Text>
+              <Text variant="bodySecondary" color="textOnCard" style={styles.incomingBody}>
+                {t(screenshotPendingValue === true ? 'screenshot.incomingBodyOn' : 'screenshot.incomingBodyOff')}
+              </Text>
+              <View style={styles.incomingActions}>
+                <Button label={t('screenshot.accept')} onPress={onAcceptScreenshotIncoming} style={styles.incomingBtn} />
+                <Button
+                  label={t('screenshot.decline')}
+                  variant="secondary"
+                  onPress={onDeclineScreenshotIncoming}
                   style={styles.incomingBtn}
                 />
               </View>
@@ -381,6 +475,36 @@ export default function ContactDetailScreen() {
           </View>
         )}
       </BottomSheet>
+
+      <BottomSheet
+        visible={screenshotSheetOpen}
+        title={t('screenshot.title')}
+        onClose={() => setScreenshotSheetOpen(false)}
+      >
+        {screenshotOutgoingPending ? (
+          <View style={styles.sheetPending}>
+            <Text variant="bodySecondary" color="textSecondary" style={styles.sheetWaiting}>
+              {t(screenshotPendingValue === true ? 'screenshot.waitingOn' : 'screenshot.waitingOff', {
+                name: contact?.displayName ?? '',
+              })}
+            </Text>
+            <Button label={t('screenshot.cancelRequest')} variant="secondary" onPress={onCancelScreenshot} />
+          </View>
+        ) : (
+          <View style={styles.screenshotPanel}>
+            <Text variant="bodySecondary" color="textSecondary">
+              {t('screenshot.body', { name: contact?.displayName ?? '' })}
+            </Text>
+            <Text variant="caption" color="textTertiary">
+              {t('screenshot.photoCaveat')}
+            </Text>
+            <Button
+              label={t(screenshotOn ? 'screenshot.requestOff' : 'screenshot.requestOn')}
+              onPress={() => void onRequestScreenshot()}
+            />
+          </View>
+        )}
+      </BottomSheet>
     </Screen>
   );
 }
@@ -433,6 +557,7 @@ const styles = StyleSheet.create({
   deleteRow: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.lg },
   sheetPending: { gap: Spacing.lg },
   sheetWaiting: {},
+  screenshotPanel: { gap: Spacing.lg },
   customPanel: { gap: Spacing.lg },
   customCurrent: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   optionRow: {

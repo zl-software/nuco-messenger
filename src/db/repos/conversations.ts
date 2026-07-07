@@ -9,6 +9,10 @@ export interface Conversation {
   retentionPending: boolean;
   retentionPendingValue: number | null;
   retentionPendingIncoming: boolean;
+  screenshotProtection: boolean;
+  screenshotPending: boolean;
+  screenshotPendingValue: boolean | null;
+  screenshotPendingIncoming: boolean;
   muted: boolean;
   createdAt: number;
 }
@@ -20,6 +24,10 @@ interface ConversationRow {
   retention_pending: number;
   retention_pending_value: number | null;
   retention_pending_incoming: number;
+  screenshot_protection: number;
+  screenshot_pending: number;
+  screenshot_pending_value: number | null;
+  screenshot_pending_incoming: number;
   muted: number;
   created_at: number;
 }
@@ -32,6 +40,10 @@ function toConversation(r: ConversationRow): Conversation {
     retentionPending: r.retention_pending === 1,
     retentionPendingValue: r.retention_pending_value,
     retentionPendingIncoming: r.retention_pending_incoming === 1,
+    screenshotProtection: r.screenshot_protection === 1,
+    screenshotPending: r.screenshot_pending === 1,
+    screenshotPendingValue: r.screenshot_pending_value == null ? null : r.screenshot_pending_value === 1,
+    screenshotPendingIncoming: r.screenshot_pending_incoming === 1,
     muted: r.muted === 1,
     createdAt: r.created_at,
   };
@@ -66,6 +78,10 @@ export async function ensureConversation(id: string, contactId: string, retentio
     retentionPending: false,
     retentionPendingValue: null,
     retentionPendingIncoming: false,
+    screenshotProtection: false,
+    screenshotPending: false,
+    screenshotPendingValue: null,
+    screenshotPendingIncoming: false,
     muted: false,
     createdAt: now,
   };
@@ -90,6 +106,29 @@ export async function setRetentionPending(id: string, pendingValue: number, inco
 export async function clearRetentionPending(id: string): Promise<void> {
   await getDb().execute(
     'UPDATE conversations SET retention_pending = 0, retention_pending_value = NULL, retention_pending_incoming = 0 WHERE id = ?',
+    [id],
+  );
+}
+
+export async function setScreenshotProtection(id: string, on: boolean): Promise<void> {
+  await getDb().execute(
+    'UPDATE conversations SET screenshot_protection = ?, screenshot_pending = 0, screenshot_pending_value = NULL, screenshot_pending_incoming = 0 WHERE id = ?',
+    [on ? 1 : 0, id],
+  );
+}
+
+// A pending screenshot protection change. `incoming` is true when the peer requested it (we
+// accept or decline), false when we requested it (we wait or cancel).
+export async function setScreenshotPending(id: string, pendingOn: boolean, incoming: boolean): Promise<void> {
+  await getDb().execute(
+    'UPDATE conversations SET screenshot_pending = 1, screenshot_pending_value = ?, screenshot_pending_incoming = ? WHERE id = ?',
+    [pendingOn ? 1 : 0, incoming ? 1 : 0, id],
+  );
+}
+
+export async function clearScreenshotPending(id: string): Promise<void> {
+  await getDb().execute(
+    'UPDATE conversations SET screenshot_pending = 0, screenshot_pending_value = NULL, screenshot_pending_incoming = 0 WHERE id = ?',
     [id],
   );
 }

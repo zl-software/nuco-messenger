@@ -24,6 +24,8 @@ Darum Nuco:
 - Ende-zu-Ende Verschlüsselung bei jeder Nachricht, mit Verifizierung in Person, damit du
   sicher bist, wirklich mit deinem Kontakt zu schreiben.
 - Verschwindende Nachrichten: Timer setzen, und Nachrichten löschen sich auf beiden Geräten.
+- Screenshot-Schutz: Vereinbare mit deinem Kontakt, dass Screenshots und Bildschirmaufnahmen
+  in einem Chat blockiert werden, auf beiden Geräten.
 - Nur auf dem Gerät: Dein Verlauf liegt in einer verschlüsselten Datenbank auf deinem Telefon.
   Es gibt kein Cloud Backup, das lecken oder angefordert werden könnte.
 - App-Sperre: Entsperren mit Face ID, Touch ID oder PIN. Beim Sperren wird die verschlüsselte

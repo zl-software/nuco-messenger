@@ -55,6 +55,18 @@ export type SystemMessageI18nKey =
   | 'retention.systemDeclinedOut'
   | 'retention.systemCanceledIn'
   | 'retention.systemCanceledOut'
+  | 'screenshot.systemRequestIn'
+  | 'screenshot.systemRequestInOff'
+  | 'screenshot.systemRequestOut'
+  | 'screenshot.systemRequestOutOff'
+  | 'screenshot.systemChangedIn'
+  | 'screenshot.systemChangedInOff'
+  | 'screenshot.systemChangedOut'
+  | 'screenshot.systemChangedOutOff'
+  | 'screenshot.systemDeclinedIn'
+  | 'screenshot.systemDeclinedOut'
+  | 'screenshot.systemCanceledIn'
+  | 'screenshot.systemCanceledOut'
   | 'call.rowOutgoing'
   | 'call.rowIncoming'
   | 'call.rowMissedIn'
@@ -89,6 +101,17 @@ export function systemMessageKey(
       return incoming ? 'retention.systemDeclinedIn' : 'retention.systemDeclinedOut';
     case 'retention/canceled':
       return incoming ? 'retention.systemCanceledIn' : 'retention.systemCanceledOut';
+    // Screenshot rows carry '1' or '0' in the body, so the shared `off` flag applies.
+    case 'screenshot/request':
+      if (incoming) return off ? 'screenshot.systemRequestInOff' : 'screenshot.systemRequestIn';
+      return off ? 'screenshot.systemRequestOutOff' : 'screenshot.systemRequestOut';
+    case 'screenshot/changed':
+      if (incoming) return off ? 'screenshot.systemChangedInOff' : 'screenshot.systemChangedIn';
+      return off ? 'screenshot.systemChangedOutOff' : 'screenshot.systemChangedOut';
+    case 'screenshot/declined':
+      return incoming ? 'screenshot.systemDeclinedIn' : 'screenshot.systemDeclinedOut';
+    case 'screenshot/canceled':
+      return incoming ? 'screenshot.systemCanceledIn' : 'screenshot.systemCanceledOut';
     case 'call/outgoing':
       return 'call.rowOutgoing';
     case 'call/incoming':

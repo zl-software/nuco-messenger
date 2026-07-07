@@ -35,6 +35,13 @@ export async function migrate(db: DB): Promise<void> {
       await db.execute('ALTER TABLE contacts ADD COLUMN peer_confirmed_at INTEGER');
       await db.execute('ALTER TABLE contacts ADD COLUMN card_spk_pub TEXT');
     }
+    // v4 -> v5: per chat screenshot protection, negotiated like retention.
+    if (current < 5 && !(await columnExists(db, 'conversations', 'screenshot_protection'))) {
+      await db.execute('ALTER TABLE conversations ADD COLUMN screenshot_protection INTEGER NOT NULL DEFAULT 0');
+      await db.execute('ALTER TABLE conversations ADD COLUMN screenshot_pending INTEGER NOT NULL DEFAULT 0');
+      await db.execute('ALTER TABLE conversations ADD COLUMN screenshot_pending_value INTEGER');
+      await db.execute('ALTER TABLE conversations ADD COLUMN screenshot_pending_incoming INTEGER NOT NULL DEFAULT 0');
+    }
     await db.execute(
       'INSERT INTO meta(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
       ['schema_version', String(SCHEMA_VERSION)],
