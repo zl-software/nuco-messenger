@@ -75,6 +75,10 @@ export default function ConversationScreen() {
   const [sending, setSending] = useState(false);
   const [chatUnlocked, setChatUnlocked] = useState(() => (id ? isChatUnlocked(id) : false));
   const scrollRef = useRef<ScrollView>(null);
+  // Whether the view is pinned to the newest message. Only then do content growth (a new
+  // message) and layout shrink (the keyboard opening) auto scroll to the end; a user who
+  // scrolled up to read history keeps their position through both.
+  const atBottomRef = useRef(true);
   const focusedRef = useRef(false);
   const startCall = useStartCall();
   const callStatus = useCall((s) => s.status);
@@ -199,6 +203,8 @@ export default function ConversationScreen() {
     if (!text || !contact || sending) return;
     setSending(true);
     setDraft('');
+    // Sending while scrolled up still reveals the sent message.
+    atBottomRef.current = true;
     await sendText({ id: contact.id, handle: contact.handle }, text, conversation?.retentionSeconds ?? 86400);
     await loadMessages();
     setSending(false);
@@ -247,7 +253,7 @@ export default function ConversationScreen() {
   }, [contact, respond]);
 
   if (!contact) {
-    return <Screen contentStyle={styles.screen}>{null}</Screen>;
+    return <Screen>{null}</Screen>;
   }
 
   const verified = isMutuallyVerified(contact);
@@ -270,7 +276,7 @@ export default function ConversationScreen() {
   // released. The header stays so the user knows where they are.
   if (conversation?.lockEnabled && !chatUnlocked) {
     return (
-      <Screen contentStyle={styles.screen} edges={['top']}>
+      <Screen edges={['top']}>
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} hitSlop={8} style={styles.backBtn}>
             <ChevronLeft size={22} color={Colors.text} />
@@ -290,13 +296,15 @@ export default function ConversationScreen() {
             </View>
           </View>
         </View>
-        <ChatLockGate conversationId={contact.id} bioEnabled={conversation.lockBioEnabled} onUnlocked={onChatUnlocked} />
+        <View style={styles.lockGateWrap}>
+          <ChatLockGate conversationId={contact.id} bioEnabled={conversation.lockBioEnabled} onUnlocked={onChatUnlocked} />
+        </View>
       </Screen>
     );
   }
 
   return (
-    <Screen contentStyle={styles.screen} edges={['top']}>
+    <Screen edges={['top']}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={8} style={styles.backBtn}>
           <ChevronLeft size={22} color={Colors.text} />
@@ -428,7 +436,19 @@ export default function ConversationScreen() {
             style={styles.flex}
             contentContainerStyle={styles.listGrow}
             keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-            onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
+            scrollEventThrottle={32}
+            onScroll={(e) => {
+              const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+              atBottomRef.current = contentOffset.y + layoutMeasurement.height >= contentSize.height - 50;
+            }}
+            onContentSizeChange={() => {
+              if (atBottomRef.current) scrollRef.current?.scrollToEnd({ animated: false });
+            }}
+            // The keyboard changes the layout height, not the content size, so it needs its
+            // own hook: pinned to the bottom, the thread rides up with the composer.
+            onLayout={() => {
+              if (atBottomRef.current) scrollRef.current?.scrollToEnd({ animated: false });
+            }}
           >
             {/* Bubbles carry no touch handlers, so a tap anywhere on the thread (including
                 below the last message, via flexGrow) lands here and closes the keyboard.
@@ -529,7 +549,9 @@ export default function ConversationScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { paddingHorizontal: Spacing.xl },
+  // The screen is full bleed so the thread's scroll indicator hugs the display edge instead
+  // of overlapping the right aligned outgoing bubbles; the 20px gutter lives on the fixed
+  // chrome (header, banners, composer) and on the list content instead.
   flex: { flex: 1 },
   header: {
     flexDirection: 'row',
@@ -537,6 +559,7 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
     paddingTop: Spacing.sm,
     paddingBottom: Spacing.md,
+    paddingHorizontal: Spacing.xl,
   },
   // Same 40x40 box as the contact detail header, so the chevron does not jump when
   // navigating between the two screens.
@@ -547,22 +570,29 @@ const styles = StyleSheet.create({
   headerInfoPressed: { opacity: 0.6 },
   headerText: { flex: 1, gap: 2 },
   nameWrap: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
-  banner: { paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md, marginBottom: Spacing.sm, gap: Spacing.xxs },
+  banner: {
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    marginBottom: Spacing.sm,
+    marginHorizontal: Spacing.xl,
+    gap: Spacing.xxs,
+  },
   bannerText: { textAlign: 'center' },
   requestCard: {
     paddingVertical: Spacing.sm,
     paddingHorizontal: Spacing.md,
     marginBottom: Spacing.sm,
+    marginHorizontal: Spacing.xl,
     gap: Spacing.sm,
   },
   requestActions: { flexDirection: 'row', gap: Spacing.sm },
   requestBtn: { flex: 1 },
-  pendingPanel: { gap: Spacing.sm, marginTop: Spacing.sm },
+  pendingPanel: { gap: Spacing.sm, marginTop: Spacing.sm, marginHorizontal: Spacing.xl },
   pendingBody: { marginBottom: Spacing.xs },
   systemRow: { alignItems: 'center', paddingVertical: Spacing.xs, paddingHorizontal: Spacing.lg },
   systemText: { textAlign: 'center' },
   listGrow: { flexGrow: 1 },
-  list: { flexGrow: 1, paddingVertical: Spacing.md, gap: Spacing.sm },
+  list: { flexGrow: 1, paddingVertical: Spacing.md, paddingHorizontal: Spacing.xl, gap: Spacing.sm },
   bubbleRow: { flexDirection: 'row' },
   bubbleRowOut: { justifyContent: 'flex-end' },
   bubbleRowIn: { justifyContent: 'flex-start' },
@@ -596,7 +626,9 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: Spacing.sm,
     paddingTop: Spacing.sm,
+    paddingHorizontal: Spacing.xl,
   },
+  lockGateWrap: { flex: 1, paddingHorizontal: Spacing.xl },
   inputWrap: {
     flex: 1,
     backgroundColor: Colors.surface1,
