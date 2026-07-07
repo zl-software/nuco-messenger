@@ -29,6 +29,8 @@ Why people choose Nuco:
   drops the key from memory, so a locked phone reveals nothing.
 - Content free notifications: a notification wakes your phone to fetch messages without ever
   sending the text or the sender through Apple.
+- Private voice calls: end to end encrypted 1:1 calls, always routed through a relay so the
+  person you call never learns your IP address.
 - No accounts tied to you: no phone number, no email, no real name required.
 - No ads, no analytics, no trackers.
 
@@ -36,7 +38,7 @@ Nuco is deliberately small and focused. Add a contact by scanning their code in 
 you match, and start a conversation that stays between the two of you.
 
 **Keywords (100 chars max, comma separated):**
-private,encrypted,messenger,secure,e2ee,signal,disappearing,messages,chat,no tracking
+private,encrypted,messenger,secure,e2ee,signal,disappearing,messages,chat,calls,no tracking
 
 **Support URL:** REPLACE_WITH_SUPPORT_URL
 
@@ -51,5 +53,6 @@ messaging apps typically warrants a higher rating; confirm the questionnaire ans
 Store Connect).
 
 **Screenshots needed (6.7" and 6.1" iPhone):** onboarding, a conversation with the disappearing
-timer banner, the lock screen, add contact by code, in person verification, settings. Provide
+timer banner, the lock screen, add contact by code, in person verification, an active voice
+call, settings. Provide
 an English set; the German set can reuse the same screens with the app in German.

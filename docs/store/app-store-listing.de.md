@@ -30,6 +30,8 @@ Darum Nuco:
   Datenbank geschlossen und der Schlüssel aus dem Speicher entfernt.
 - Inhaltsfreie Mitteilungen: Eine Mitteilung weckt dein Telefon, um Nachrichten zu holen, ohne
   jemals Text oder Absender über Apple zu senden.
+- Private Sprachanrufe: Ende-zu-Ende verschlüsselte 1:1 Anrufe, immer über ein Relay geleitet,
+  sodass dein Gegenüber nie deine IP-Adresse erfährt.
 - Keine an dich gebundenen Konten: keine Telefonnummer, keine E-Mail, kein echter Name nötig.
 - Keine Werbung, keine Analyse, keine Tracker.
 
@@ -37,7 +39,7 @@ Nuco ist bewusst klein und fokussiert. Füge einen Kontakt hinzu, indem du seine
 Person scannst, bestätige die Übereinstimmung und starte ein Gespräch, das zwischen euch bleibt.
 
 **Schlüsselwörter (max. 100 Zeichen, kommagetrennt):**
-privat,verschlüsselt,messenger,sicher,e2ee,signal,nachrichten,chat,ohne tracking
+privat,verschlüsselt,messenger,sicher,e2ee,signal,nachrichten,chat,anrufe,ohne tracking
 
 **Support-URL:** REPLACE_WITH_SUPPORT_URL
 
