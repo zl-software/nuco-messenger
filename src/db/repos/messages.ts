@@ -1,4 +1,8 @@
-// Messages repository. Bodies are stored decrypted but protected at rest by SQLCipher.
+// Messages repository. Bodies are stored decrypted and protected at rest by SQLCipher,
+// EXCEPT in chats with the per chat lock on: their text bodies are additionally sealed
+// with the chat's pubkey (crypto/chat-lock.ts) and carry the sealing parameters in
+// ciphertext_meta. A non NULL ciphertext_meta is the single "this row is sealed"
+// discriminator; NULL meta rows are plaintext and render as-is.
 
 import { getDb } from '../client';
 
@@ -35,6 +39,8 @@ export interface Message {
   direction: MessageDirection;
   kind: MessageKind;
   body: string | null;
+  // Sealing parameters JSON when the body is chat lock sealed; null/absent = plaintext.
+  meta?: string | null;
   status: MessageStatus;
   sentAt: number;
   expiresAt: number | null;
@@ -61,6 +67,7 @@ function toMessage(r: MessageRow): Message {
     direction: r.direction as MessageDirection,
     kind: r.kind as MessageKind,
     body: r.body_encrypted,
+    meta: r.ciphertext_meta,
     status: r.status as MessageStatus,
     sentAt: r.sent_at,
     expiresAt: r.expires_at,
@@ -71,9 +78,35 @@ function toMessage(r: MessageRow): Message {
 export async function insertMessage(m: Message): Promise<void> {
   await getDb().execute(
     `INSERT OR IGNORE INTO messages (id, conversation_id, direction, kind, ciphertext_meta, body_encrypted, status, sent_at, expires_at, read)
-     VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)`,
-    [m.id, m.conversationId, m.direction, m.kind, m.body, m.status, m.sentAt, m.expiresAt, m.read ? 1 : 0],
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [m.id, m.conversationId, m.direction, m.kind, m.meta ?? null, m.body, m.status, m.sentAt, m.expiresAt, m.read ? 1 : 0],
   );
+}
+
+// Used by the enable (seal) and disable (unseal) history passes.
+export async function updateMessageBody(id: string, body: string, meta: string | null): Promise<void> {
+  await getDb().execute('UPDATE messages SET body_encrypted = ?, ciphertext_meta = ? WHERE id = ?', [body, meta, id]);
+}
+
+// Plaintext text rows of one conversation, oldest first, for the batched seal pass. The
+// meta IS NULL predicate makes the pass idempotent and resumable after a crash.
+export async function listSealablePlaintext(conversationId: string, limit: number): Promise<Message[]> {
+  const result = await getDb().execute(
+    `SELECT * FROM messages WHERE conversation_id = ? AND kind = 'text' AND ciphertext_meta IS NULL AND body_encrypted IS NOT NULL
+     ORDER BY sent_at LIMIT ?`,
+    [conversationId, limit],
+  );
+  return (result.rows as unknown as MessageRow[]).map(toMessage);
+}
+
+// Sealed rows of one conversation for the batched disable (decrypt back) pass.
+export async function listSealedRows(conversationId: string, limit: number): Promise<Message[]> {
+  const result = await getDb().execute(
+    `SELECT * FROM messages WHERE conversation_id = ? AND ciphertext_meta IS NOT NULL
+     ORDER BY sent_at LIMIT ?`,
+    [conversationId, limit],
+  );
+  return (result.rows as unknown as MessageRow[]).map(toMessage);
 }
 
 export async function listMessages(conversationId: string): Promise<Message[]> {
@@ -94,14 +127,35 @@ export interface PendingOutbound {
 
 // Outgoing text still marked 'sending' was interrupted (the in memory relay queue is lost on
 // app kill). The conversation id is the contact id, so join to recover the peer handle.
+// Sealed rows are excluded: their stored body is ciphertext, and only the chat's released
+// private key can recover the plaintext (see listPendingOutboundSealed).
 export async function listPendingOutbound(): Promise<PendingOutbound[]> {
   const result = await getDb().execute(
     `SELECT m.id, m.conversation_id AS conversationId, m.body_encrypted AS body, c.handle
      FROM messages m JOIN contacts c ON c.id = m.conversation_id
      WHERE m.direction = 'out' AND m.kind = 'text' AND m.status = 'sending' AND m.body_encrypted IS NOT NULL
+       AND m.ciphertext_meta IS NULL
      ORDER BY m.sent_at`,
   );
   return result.rows as unknown as PendingOutbound[];
+}
+
+export interface PendingOutboundSealed extends PendingOutbound {
+  meta: string;
+}
+
+// Interrupted outbound whose stored body is sealed. Resent right after the owner unlocks
+// that chat, the only moment the plaintext can be recovered.
+export async function listPendingOutboundSealed(conversationId: string): Promise<PendingOutboundSealed[]> {
+  const result = await getDb().execute(
+    `SELECT m.id, m.conversation_id AS conversationId, m.body_encrypted AS body, m.ciphertext_meta AS meta, c.handle
+     FROM messages m JOIN contacts c ON c.id = m.conversation_id
+     WHERE m.conversation_id = ? AND m.direction = 'out' AND m.kind = 'text' AND m.status = 'sending'
+       AND m.body_encrypted IS NOT NULL AND m.ciphertext_meta IS NOT NULL
+     ORDER BY m.sent_at`,
+    [conversationId],
+  );
+  return result.rows as unknown as PendingOutboundSealed[];
 }
 
 // Returns the number of rows actually flipped so callers can emit change events only when
@@ -157,6 +211,12 @@ export async function conversationPreviews(): Promise<ConversationPreview[]> {
     kind: r.kind as MessageKind,
     unread: r.unread,
   }));
+}
+
+// Drop every message row of one conversation (the chat lock forgot-code path: sealed
+// bodies without the key are unrecoverable by design).
+export async function deleteConversationMessages(conversationId: string): Promise<void> {
+  await getDb().execute('DELETE FROM messages WHERE conversation_id = ?', [conversationId]);
 }
 
 // Delete messages whose expiry has passed. Returns the number removed.

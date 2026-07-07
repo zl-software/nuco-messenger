@@ -12,6 +12,7 @@ import { startExpirySweeper } from './expiry';
 import { resolveServerUrl } from './server';
 import { loadPrefs } from './prefs';
 import { useSession } from '@/state/session';
+import { initChatLocks, sealPendingForLockedChats } from '@/lock/chat-locks';
 import { sweepExpired } from '@/db/repos/messages';
 import { registerPush } from '@/transport/push';
 
@@ -35,6 +36,7 @@ function wireRelayCallbacks(): void {
 export async function goOnlineFirstRun(account: Account): Promise<void> {
   useSession.getState().setAccount(account);
   const prefs = await loadPrefs();
+  initChatLocks();
   wireRelayCallbacks();
   startRelay(resolveServerUrl(prefs), account, registerParamsFor(account, { kind: 'none' }));
   startExpirySweeper();
@@ -47,6 +49,7 @@ export async function bringOnline(): Promise<void> {
   if (!account) return;
   useSession.getState().setAccount(account);
   const prefs = await loadPrefs();
+  initChatLocks();
   wireRelayCallbacks();
   // Register on connect: a self hosted relay (or one whose store was reset) will not know this
   // handle, and authentication fails without a registration, leaving the socket disconnected.
@@ -56,6 +59,8 @@ export async function bringOnline(): Promise<void> {
   // Re-send anything left 'sending' when the app was last killed (the outbound queue is memory
   // only). Fire in the background so it does not gate coming online.
   void resendPendingOutbound();
+  // Self heal a crash mid chat-lock-enable: seal any plaintext rows left in locked chats.
+  void sealPendingForLockedChats();
   void registerPush();
 }
 

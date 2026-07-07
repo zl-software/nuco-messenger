@@ -20,6 +20,7 @@ import {
 import {
   insertMessage,
   listPendingOutbound,
+  listPendingOutboundSealed,
   markConversationRead,
   updateMessageStatus,
   type MessageKind,
@@ -27,6 +28,8 @@ import {
 import { getSignal } from './account';
 import { emitConversationsChanged } from './data-events';
 import { getRelay } from './relay';
+import { sealBody } from '@/crypto/chat-lock';
+import { isChatUnlocked, openWithReleasedKey } from '@/lock/chat-locks';
 import { isUnlocked } from '@/lock/lock-controller';
 import type { CallContact, CallSignal } from '@/calls/types';
 
@@ -133,13 +136,17 @@ export async function sendContent(handle: string, content: MessageContent, id: s
 export async function sendText(contact: { id: string; handle: string }, text: string, retentionSeconds: number): Promise<void> {
   const now = Date.now();
   const id = Crypto.randomUUID();
-  await ensureConversation(contact.id, contact.id, retentionSeconds, now);
+  const convo = await ensureConversation(contact.id, contact.id, retentionSeconds, now);
+  // In a chat with the per chat lock on, the STORED copy is sealed with the chat pubkey;
+  // the wire body below stays plaintext into the Signal channel as always.
+  const sealed = convo.lockEnabled && convo.lockPubkey ? sealBody(text, convo.lockPubkey, contact.id, id) : null;
   await insertMessage({
     id,
     conversationId: contact.id,
     direction: 'out',
     kind: 'text',
-    body: text,
+    body: sealed ? sealed.bodyB64 : text,
+    meta: sealed ? sealed.meta : null,
     status: 'sending',
     sentAt: now,
     expiresAt: expiryFor(retentionSeconds, now),
@@ -169,6 +176,28 @@ export async function resendPendingOutbound(): Promise<void> {
   for (const p of pending) {
     try {
       await sendContent(p.handle, { t: 'text', body: p.body }, p.id);
+      await updateMessageStatus(p.id, 'sent');
+    } catch {
+      await updateMessageStatus(p.id, 'failed');
+    }
+    emitConversationsChanged(p.conversationId);
+  }
+}
+
+// Interrupted outbound in a LOCKED chat: the stored body is sealed, so the resend can only
+// happen right after the owner unlocks that chat (the chat screen calls this on unlock).
+export async function resendSealedPending(conversationId: string, lockPubkey: string): Promise<void> {
+  if (!isUnlocked() || !isChatUnlocked(conversationId)) return;
+  let pending;
+  try {
+    pending = await listPendingOutboundSealed(conversationId);
+  } catch {
+    return;
+  }
+  for (const p of pending) {
+    try {
+      const body = openWithReleasedKey(conversationId, lockPubkey, p.id, p.body, p.meta);
+      await sendContent(p.handle, { t: 'text', body }, p.id);
       await updateMessageStatus(p.id, 'sent');
     } catch {
       await updateMessageStatus(p.id, 'failed');
@@ -429,19 +458,25 @@ async function doReceiveEnvelope(from: string, envelope: MessageEnvelope): Promi
     const convo = (await getConversation(contact.id)) ?? (await ensureConversation(contact.id, contact.id, 86400, now));
 
     switch (content.t) {
-      case 'text':
+      case 'text': {
+        // A locked chat's bodies are sealed with the chat pubkey before they touch the
+        // database; no secret is needed, so this works while the chat is locked.
+        const sealed =
+          convo.lockEnabled && convo.lockPubkey ? sealBody(content.body, convo.lockPubkey, contact.id, envelope.id) : null;
         await insertMessage({
           id: envelope.id,
           conversationId: contact.id,
           direction: 'in',
           kind: 'text',
-          body: content.body,
+          body: sealed ? sealed.bodyB64 : content.body,
+          meta: sealed ? sealed.meta : null,
           status: 'delivered',
           sentAt: envelope.sentAt || now,
           expiresAt: expiryFor(convo.retentionSeconds, now),
           read: false,
         });
         break;
+      }
       // System rows reuse the envelope id, so insertMessage's INSERT OR IGNORE makes a
       // relay redelivery a no-op. Incoming request, changed, and declined rows arrive
       // unread on purpose: they surface as the unread badge on the chats list.

@@ -8,6 +8,7 @@ import { DEFAULT_PREFS } from '@/services/prefs';
 import { resetSignal } from '@/services/account';
 import { getRelay, stopRelay } from '@/services/relay';
 import { stopExpirySweeper } from '@/services/expiry';
+import { wipeAllChatLockSecrets } from '@/lock/chat-locks';
 import { lock } from '@/lock/lock-controller';
 import { useSession } from '@/state/session';
 import { useSettings } from '@/state/settings';
@@ -23,6 +24,13 @@ export async function wipeLocalData(): Promise<void> {
   stopExpirySweeper();
   try {
     await lock();
+  } catch {
+    // ignore
+  }
+  try {
+    // Before the database goes: the per chat lock keystore index walk needs no db, but
+    // the items must not outlive the account (the iOS Keychain survives reinstalls).
+    await wipeAllChatLockSecrets();
   } catch {
     // ignore
   }

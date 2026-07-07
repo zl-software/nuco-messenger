@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Avatar,
   Button,
+  Lock,
   Pill,
   QrIcon,
   Plus,
@@ -35,6 +36,7 @@ interface ChatRow {
   kind: MessageKind;
   unread: number;
   retentionSeconds: number;
+  locked: boolean;
 }
 
 function formatTime(ms: number): string {
@@ -71,6 +73,7 @@ export default function ChatsScreen() {
           kind: preview.kind,
           unread: preview.unread,
           retentionSeconds: convo?.retentionSeconds ?? 86400,
+          locked: convo?.lockEnabled ?? false,
         });
       }
       setRows(built);
@@ -164,8 +167,11 @@ export default function ChatsScreen() {
           // System rows carry a seconds value in the body; render the localized sentence,
           // never the raw stored value. Text previews honor the "show preview" privacy setting:
           // when off, the list shows a neutral placeholder instead of the message body.
-          const preview =
-            item.kind !== 'text'
+          // A locked chat masks EVERY kind (even "missed call"), and its text bodies are
+          // sealed in the db anyway, so the placeholder is the only honest preview.
+          const preview = item.locked
+            ? t('chatLock.lockedPreview')
+            : item.kind !== 'text'
               ? t(systemMessageKey(item.kind, item.direction, item.body), {
                   name: item.contact.displayName,
                   value: item.body != null ? retentionLabel(Number(item.body), t) : '',
@@ -193,6 +199,7 @@ export default function ChatsScreen() {
                   </Text>
                 </View>
                 <View style={styles.rowBottom}>
+                  {item.locked ? <Lock size={13} color={Colors.textTertiary} /> : null}
                   <Text
                     variant="bodySecondary"
                     color={unreadStyle ? 'text' : 'textSecondary'}

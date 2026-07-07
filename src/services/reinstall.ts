@@ -8,6 +8,7 @@
 
 import { wipeSecrets } from '@/crypto/secure-storage';
 import { databaseFileExists } from '@/db/client';
+import { wipeAllChatLockSecrets } from '@/lock/chat-locks';
 import { DEFAULT_PREFS, loadPrefs, savePrefs } from './prefs';
 
 export async function resetIfReinstalled(): Promise<void> {
@@ -16,6 +17,7 @@ export async function resetIfReinstalled(): Promise<void> {
     if (!prefs.onboardingComplete) return;
     if (databaseFileExists()) return;
     await wipeSecrets();
+    await wipeAllChatLockSecrets();
     await savePrefs({ ...DEFAULT_PREFS });
   } catch {
     // Never block boot on the guard.

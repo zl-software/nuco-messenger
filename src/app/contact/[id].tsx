@@ -17,6 +17,18 @@ import {
   type Contact,
 } from '@/db/repos/contacts';
 import { getConversation, type Conversation } from '@/db/repos/conversations';
+import { biometricsAvailable } from '@/lock/biometrics';
+import {
+  changeChatCode,
+  disableChatLock,
+  enableChatLock,
+  isChatUnlocked,
+  removeChatLockSecrets,
+  removeLockAndDeleteMessages,
+  setChatBio,
+  unlockChatWithBiometrics,
+  unlockChatWithCode,
+} from '@/lock/chat-locks';
 import {
   acceptRetention,
   acceptScreenshotProtection,
@@ -59,6 +71,15 @@ export default function ContactDetailScreen() {
   const [customMode, setCustomMode] = useState(false);
   const [customValue, setCustomValue] = useState('');
   const [customUnit, setCustomUnit] = useState<CustomUnit>('hours');
+  const [lockSheetOpen, setLockSheetOpen] = useState(false);
+  const [lockCode, setLockCode] = useState('');
+  const [lockCode2, setLockCode2] = useState('');
+  const [lockBioAvailable, setLockBioAvailable] = useState(false);
+  const [lockBioWanted, setLockBioWanted] = useState(false);
+  const [lockBusy, setLockBusy] = useState<null | 'enable' | 'disable' | 'unlock' | 'change'>(null);
+  const [lockManageUnlocked, setLockManageUnlocked] = useState(false);
+  const [lockChangeMode, setLockChangeMode] = useState(false);
+  const [lockWrongCode, setLockWrongCode] = useState(false);
   const startCall = useStartCall();
   const callStatus = useCall((s) => s.status);
 
@@ -159,6 +180,9 @@ export default function ContactDetailScreen() {
           style: 'destructive',
           onPress: () => {
             void (async () => {
+              // The chat lock keystore items do not cascade with the db rows; drop them
+              // explicitly (best effort, the wipe paths walk the index as a backstop).
+              await removeChatLockSecrets(contact.id).catch(() => undefined);
               await deleteContact(contact.id);
               emitConversationsChanged();
               // Not router.back(): this screen is often reached through a replace chain
@@ -223,6 +247,123 @@ export default function ContactDetailScreen() {
     if (!contact) return;
     await cancelScreenshotProtection({ id: contact.id, handle: contact.handle });
     await load();
+  }
+
+  // ---- per chat lock (local only, never negotiated with the peer) ----
+
+  const lockOn = conversation?.lockEnabled === true;
+  const lockCodeValid = /^\d{6}$/.test(lockCode) && lockCode === lockCode2;
+  const lockLockedOut = (conversation?.lockLockoutUntil ?? 0) > Date.now();
+
+  function openLockSheet() {
+    setLockCode('');
+    setLockCode2('');
+    setLockWrongCode(false);
+    setLockChangeMode(false);
+    setLockBioWanted(false);
+    setLockManageUnlocked(contact ? isChatUnlocked(contact.id) : false);
+    void biometricsAvailable().then(setLockBioAvailable);
+    setLockSheetOpen(true);
+  }
+
+  async function onEnableLock() {
+    if (!contact || !lockCodeValid) return;
+    setLockBusy('enable');
+    try {
+      await enableChatLock(contact.id, lockCode, lockBioWanted && lockBioAvailable);
+      await load();
+      emitConversationsChanged(contact.id);
+      setLockSheetOpen(false);
+    } catch {
+      setLockWrongCode(true);
+    }
+    setLockBusy(null);
+  }
+
+  async function onUnlockManage(useBio: boolean) {
+    if (!contact) return;
+    setLockBusy('unlock');
+    const ok = useBio
+      ? await unlockChatWithBiometrics(contact.id, t('chatLock.biometricPrompt'))
+      : await unlockChatWithCode(contact.id, lockCode);
+    setLockBusy(null);
+    setLockCode('');
+    if (ok) {
+      setLockManageUnlocked(true);
+      setLockWrongCode(false);
+    } else {
+      setLockWrongCode(!useBio);
+    }
+    await load();
+  }
+
+  async function onChangeCode() {
+    if (!contact || !lockCodeValid) return;
+    setLockBusy('change');
+    try {
+      await changeChatCode(contact.id, lockCode);
+      setLockChangeMode(false);
+      setLockCode('');
+      setLockCode2('');
+    } catch {
+      // Chat got relocked underneath (app lock): fall back to the unlock step.
+      setLockManageUnlocked(false);
+    }
+    setLockBusy(null);
+  }
+
+  async function onToggleLockBio(value: boolean) {
+    if (!contact) return;
+    try {
+      await setChatBio(contact.id, value);
+      await load();
+    } catch {
+      setLockManageUnlocked(false);
+    }
+  }
+
+  function onRemoveLock() {
+    if (!contact) return;
+    Alert.alert(t('chatLock.removeLock'), t('chatLock.removeLockBody'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('chatLock.removeLock'),
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            setLockBusy('disable');
+            try {
+              await disableChatLock(contact.id);
+              await load();
+              emitConversationsChanged(contact.id);
+              setLockSheetOpen(false);
+            } catch {
+              setLockManageUnlocked(false);
+            }
+            setLockBusy(null);
+          })();
+        },
+      },
+    ]);
+  }
+
+  function onForgotCode() {
+    if (!contact) return;
+    Alert.alert(t('chatLock.forgotCode'), t('chatLock.forgotCodeBody'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('chatLock.forgotCodeCta'),
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            await removeLockAndDeleteMessages(contact.id);
+            await load();
+            emitConversationsChanged(contact.id);
+            setLockSheetOpen(false);
+          })();
+        },
+      },
+    ]);
   }
 
   return (
@@ -310,6 +451,16 @@ export default function ContactDetailScreen() {
                     {t('screenshot.pending')}
                   </Text>
                 ) : null}
+                <ChevronRight size={18} color={Colors.textTertiary} />
+              </View>
+            </Pressable>
+            <View style={styles.divider} />
+            <Pressable style={styles.settingRow} onPress={openLockSheet}>
+              <Text variant="label">{t('chatLock.title')}</Text>
+              <View style={styles.settingValue}>
+                <Text variant="label" color="textSecondary">
+                  {t(lockOn ? 'chatLock.stateOn' : 'chatLock.stateOff')}
+                </Text>
                 <ChevronRight size={18} color={Colors.textTertiary} />
               </View>
             </Pressable>
@@ -506,6 +657,149 @@ export default function ContactDetailScreen() {
           </View>
         )}
       </BottomSheet>
+
+      <BottomSheet visible={lockSheetOpen} title={t('chatLock.title')} onClose={() => setLockSheetOpen(false)}>
+        {!lockOn ? (
+          // Enable: pick a mandatory six digit code, optionally add Face ID on top.
+          <View style={styles.lockPanel}>
+            <Text variant="bodySecondary" color="textSecondary">
+              {t('chatLock.sheetBody')}
+            </Text>
+            <Text variant="caption" color="textTertiary">
+              {t('chatLock.localOnlyNote', { name: contact?.displayName ?? '' })}
+            </Text>
+            <TextField
+              value={lockCode}
+              onChangeText={(v) => setLockCode(v.replace(/\D+/g, '').slice(0, 6))}
+              keyboardType="number-pad"
+              secureTextEntry
+              placeholder={t('chatLock.codePlaceholder')}
+            />
+            <TextField
+              value={lockCode2}
+              onChangeText={(v) => setLockCode2(v.replace(/\D+/g, '').slice(0, 6))}
+              keyboardType="number-pad"
+              secureTextEntry
+              placeholder={t('chatLock.codeConfirmPlaceholder')}
+            />
+            {lockCode2.length >= lockCode.length && lockCode2.length > 0 && lockCode !== lockCode2 ? (
+              <Text variant="caption" color="danger">
+                {t('chatLock.codeMismatch')}
+              </Text>
+            ) : null}
+            {lockBioAvailable ? (
+              <View style={styles.lockToggleRow}>
+                <Text variant="label">{t('chatLock.useFaceId')}</Text>
+                <Toggle value={lockBioWanted} onChange={setLockBioWanted} />
+              </View>
+            ) : null}
+            <Text variant="caption" color="textTertiary">
+              {t('chatLock.forgotWarning')}
+            </Text>
+            <Button
+              label={t('chatLock.enableCta')}
+              disabled={!lockCodeValid}
+              loading={lockBusy === 'enable'}
+              onPress={() => void onEnableLock()}
+            />
+          </View>
+        ) : !lockManageUnlocked ? (
+          // Manage while locked: release the key first (code or Face ID), or take the
+          // destructive forgot-code exit.
+          <View style={styles.lockPanel}>
+            <Text variant="bodySecondary" color="textSecondary">
+              {t('chatLock.manageLockedBody')}
+            </Text>
+            {lockLockedOut ? (
+              <Text variant="caption" color="danger">
+                {t('chatLock.lockedOutBody')}
+              </Text>
+            ) : (
+              <>
+                <TextField
+                  value={lockCode}
+                  onChangeText={(v) => setLockCode(v.replace(/\D+/g, '').slice(0, 6))}
+                  keyboardType="number-pad"
+                  secureTextEntry
+                  placeholder={t('chatLock.codePlaceholder')}
+                />
+                {lockWrongCode ? (
+                  <Text variant="caption" color="danger">
+                    {t('chatLock.wrongCode')}
+                  </Text>
+                ) : null}
+                <Button
+                  label={t('chatLock.unlockCta')}
+                  disabled={lockCode.length !== 6}
+                  loading={lockBusy === 'unlock'}
+                  onPress={() => void onUnlockManage(false)}
+                />
+                {conversation?.lockBioEnabled && lockBioAvailable ? (
+                  <Button
+                    label={t('chatLock.useBiometrics')}
+                    variant="ghost"
+                    onPress={() => void onUnlockManage(true)}
+                  />
+                ) : null}
+              </>
+            )}
+            <Button label={t('chatLock.forgotCode')} variant="ghost" onPress={onForgotCode} />
+          </View>
+        ) : lockChangeMode ? (
+          <View style={styles.lockPanel}>
+            <TextField
+              value={lockCode}
+              onChangeText={(v) => setLockCode(v.replace(/\D+/g, '').slice(0, 6))}
+              keyboardType="number-pad"
+              secureTextEntry
+              placeholder={t('chatLock.codePlaceholder')}
+            />
+            <TextField
+              value={lockCode2}
+              onChangeText={(v) => setLockCode2(v.replace(/\D+/g, '').slice(0, 6))}
+              keyboardType="number-pad"
+              secureTextEntry
+              placeholder={t('chatLock.codeConfirmPlaceholder')}
+            />
+            {lockCode2.length >= lockCode.length && lockCode2.length > 0 && lockCode !== lockCode2 ? (
+              <Text variant="caption" color="danger">
+                {t('chatLock.codeMismatch')}
+              </Text>
+            ) : null}
+            <Button
+              label={t('chatLock.changeCode')}
+              disabled={!lockCodeValid}
+              loading={lockBusy === 'change'}
+              onPress={() => void onChangeCode()}
+            />
+            <Button label={t('common.back')} variant="ghost" onPress={() => setLockChangeMode(false)} />
+          </View>
+        ) : (
+          <View style={styles.lockPanel}>
+            {lockBioAvailable ? (
+              <View style={styles.lockToggleRow}>
+                <Text variant="label">{t('chatLock.useFaceId')}</Text>
+                <Toggle value={conversation?.lockBioEnabled === true} onChange={(v) => void onToggleLockBio(v)} />
+              </View>
+            ) : null}
+            <Button
+              label={t('chatLock.changeCode')}
+              variant="secondary"
+              onPress={() => {
+                setLockCode('');
+                setLockCode2('');
+                setLockChangeMode(true);
+              }}
+            />
+            <Button
+              label={t('chatLock.removeLock')}
+              variant="destructive"
+              loading={lockBusy === 'disable'}
+              onPress={onRemoveLock}
+            />
+          </View>
+        )}
+      </BottomSheet>
     </Screen>
   );
 }
@@ -559,6 +853,8 @@ const styles = StyleSheet.create({
   sheetPending: { gap: Spacing.lg },
   sheetWaiting: {},
   screenshotPanel: { gap: Spacing.lg },
+  lockPanel: { gap: Spacing.md },
+  lockToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: Spacing.xs },
   customPanel: { gap: Spacing.lg },
   customCurrent: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   optionRow: {

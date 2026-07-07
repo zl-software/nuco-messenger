@@ -22,12 +22,13 @@ import { useTranslation } from 'react-i18next';
 
 import { MESSAGE_BODY_MAX_LEN } from '@nuco/protocol';
 
-import { Avatar, Button, Card, ChevronLeft, Phone, Screen, SendArrow, Text, VerifiedShield } from '@/ui';
+import { Avatar, Button, Card, ChatLockGate, ChevronLeft, Phone, Screen, SendArrow, Text, VerifiedShield } from '@/ui';
 import { Colors, Fonts, Overlay, Radius, Spacing } from '@/constants/theme';
 import { getContact, isMutuallyVerified, type Contact } from '@/db/repos/contacts';
 import { getConversationByContact, type Conversation } from '@/db/repos/conversations';
 import { listMessages, type Message } from '@/db/repos/messages';
 import { isDbOpen } from '@/db/client';
+import { decryptBodyCached, isChatUnlocked, relockChat } from '@/lock/chat-locks';
 import { subscribeConversationsChanged } from '@/services/data-events';
 import { callDurationParam, retentionLabel, systemMessageKey } from '@/i18n/system-messages';
 import {
@@ -36,6 +37,7 @@ import {
   cancelRetention,
   cancelScreenshotProtection,
   markRead,
+  resendSealedPending,
   sendText,
 } from '@/services/messaging';
 import { useScreenshotGuard } from '@/ui/use-screenshot-guard';
@@ -71,6 +73,7 @@ export default function ConversationScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [chatUnlocked, setChatUnlocked] = useState(() => (id ? isChatUnlocked(id) : false));
   const scrollRef = useRef<ScrollView>(null);
   const focusedRef = useRef(false);
   const startCall = useStartCall();
@@ -114,15 +117,43 @@ export default function ConversationScreen() {
     await loadMessages();
   }, [id, loadMessages]);
 
+  // Leaving the chat relocks it: the released chat key and the decrypted body cache are
+  // dropped, so re-entry prompts again (auto FaceID makes that one tap).
+  useEffect(() => {
+    return () => {
+      if (id) relockChat(id);
+    };
+  }, [id]);
+
+  // Never mark messages read behind the chat lock gate: the owner has not seen them yet.
+  const markReadIfViewable = useCallback(async () => {
+    if (!id || !isDbOpen()) return;
+    const convo = await getConversationByContact(id).catch(() => null);
+    if (convo?.lockEnabled && !isChatUnlocked(id)) return;
+    void markRead(id);
+  }, [id]);
+
+  const onChatUnlocked = useCallback(() => {
+    if (!id) return;
+    setChatUnlocked(true);
+    void (async () => {
+      // An interrupted send in a locked chat can only be resent now, with the key released.
+      const convo = await getConversationByContact(id).catch(() => null);
+      if (convo?.lockPubkey) void resendSealedPending(id, convo.lockPubkey);
+      await loadAll();
+      void markReadIfViewable();
+    })();
+  }, [id, loadAll, markReadIfViewable]);
+
   useFocusEffect(
     useCallback(() => {
       focusedRef.current = true;
       void loadAll();
-      if (id) void markRead(id);
+      void markReadIfViewable();
       return () => {
         focusedRef.current = false;
       };
-    }, [loadAll, id]),
+    }, [loadAll, markReadIfViewable]),
   );
 
   // React to data changes for this conversation: refresh the messages AND the conversation
@@ -138,9 +169,9 @@ export default function ConversationScreen() {
     return subscribeConversationsChanged((cid) => {
       if (cid !== undefined && cid !== id) return;
       void loadAll();
-      if (visible()) void markRead(id);
+      if (visible()) void markReadIfViewable();
     });
-  }, [id, loadAll, visible]);
+  }, [id, loadAll, visible, markReadIfViewable]);
 
   // Returning to the foreground on this chat: whatever arrived meanwhile is on screen now,
   // so refresh and mark it read (no data event fires on resume).
@@ -149,10 +180,10 @@ export default function ConversationScreen() {
     const sub = AppState.addEventListener('change', (state) => {
       if (state !== 'active' || !focusedRef.current) return;
       void loadAll();
-      void markRead(id);
+      void markReadIfViewable();
     });
     return () => sub.remove();
-  }, [id, loadAll]);
+  }, [id, loadAll, markReadIfViewable]);
 
   // Poll for inbound messages while the screen is open. Kept as a safety net under the
   // change events (it also retires expired messages from view).
@@ -222,6 +253,47 @@ export default function ConversationScreen() {
   const verified = isMutuallyVerified(contact);
   const subtitle = verified ? t('conversation.verified') : t('conversation.pendingVerification');
   const retention = conversation?.retentionSeconds ?? 86400;
+
+  // Sealed rows decrypt through the released chat key; anything that fails renders a
+  // placeholder rather than ciphertext or a crash.
+  const displayBody = (m: Message): string | null => {
+    if (m.meta == null) return m.body;
+    if (!conversation?.lockPubkey) return t('chatLock.undecryptable');
+    try {
+      return decryptBodyCached(conversation.id, conversation.lockPubkey, m);
+    } catch {
+      return t('chatLock.undecryptable');
+    }
+  };
+
+  // The chat lock gate replaces the thread and composer until this chat's key is
+  // released. The header stays so the user knows where they are.
+  if (conversation?.lockEnabled && !chatUnlocked) {
+    return (
+      <Screen contentStyle={styles.screen} edges={['top']}>
+        <View style={styles.header}>
+          <Pressable onPress={() => router.back()} hitSlop={8} style={styles.backBtn}>
+            <ChevronLeft size={22} color={Colors.text} />
+          </Pressable>
+          <View style={styles.headerInfo}>
+            <Avatar name={contact.displayName} size={40} unverified={!verified} />
+            <View style={styles.headerText}>
+              <View style={styles.nameWrap}>
+                <Text variant="rowTitle" color="text" numberOfLines={1}>
+                  {contact.displayName}
+                </Text>
+                {verified ? <VerifiedShield size={14} color={Colors.accent} /> : null}
+              </View>
+              <Text variant="monoCaption" color="textSecondary">
+                {t('chatLock.lockedPreview')}
+              </Text>
+            </View>
+          </View>
+        </View>
+        <ChatLockGate conversationId={contact.id} bioEnabled={conversation.lockBioEnabled} onUnlocked={onChatUnlocked} />
+      </Screen>
+    );
+  }
 
   return (
     <Screen contentStyle={styles.screen} edges={['top']}>
@@ -388,7 +460,7 @@ export default function ConversationScreen() {
                           style={[styles.bubble, styles.bubbleOut]}
                         >
                           <Text variant="body" style={styles.outText}>
-                            {m.body}
+                            {displayBody(m)}
                           </Text>
                         </LinearGradient>
                         <Text variant="caption" color={m.status === 'failed' ? 'danger' : 'textTertiary'} style={styles.statusText}>
@@ -398,7 +470,7 @@ export default function ConversationScreen() {
                     ) : (
                       <View style={[styles.bubble, styles.bubbleIn]}>
                         <Text variant="body" color="text">
-                          {m.body}
+                          {displayBody(m)}
                         </Text>
                       </View>
                     )}

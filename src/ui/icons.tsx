@@ -49,6 +49,16 @@ export function VerifiedShield({ size = 14, color = Colors.accent }: IconProps) 
   );
 }
 
+export function Lock({ size = 16, color = Colors.textSecondary }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Rect x={5} y={10.5} width={14} height={9.5} rx={2.5} stroke={color} strokeWidth={1.7} />
+      <Path d="M8 10.5V7.5a4 4 0 018 0v3" stroke={color} strokeWidth={1.7} strokeLinecap="round" />
+      <Circle cx={12} cy={15.2} r={1.4} fill={color} />
+    </Svg>
+  );
+}
+
 export function Clock({ size = 16, color = Colors.accent }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">

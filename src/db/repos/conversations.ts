@@ -13,6 +13,11 @@ export interface Conversation {
   screenshotPending: boolean;
   screenshotPendingValue: boolean | null;
   screenshotPendingIncoming: boolean;
+  lockEnabled: boolean;
+  lockBioEnabled: boolean;
+  lockPubkey: string | null;
+  lockFailedAttempts: number;
+  lockLockoutUntil: number;
   muted: boolean;
   createdAt: number;
 }
@@ -28,6 +33,11 @@ interface ConversationRow {
   screenshot_pending: number;
   screenshot_pending_value: number | null;
   screenshot_pending_incoming: number;
+  lock_enabled: number;
+  lock_bio_enabled: number;
+  lock_pubkey: string | null;
+  lock_failed_attempts: number;
+  lock_lockout_until: number;
   muted: number;
   created_at: number;
 }
@@ -44,6 +54,11 @@ function toConversation(r: ConversationRow): Conversation {
     screenshotPending: r.screenshot_pending === 1,
     screenshotPendingValue: r.screenshot_pending_value == null ? null : r.screenshot_pending_value === 1,
     screenshotPendingIncoming: r.screenshot_pending_incoming === 1,
+    lockEnabled: r.lock_enabled === 1,
+    lockBioEnabled: r.lock_bio_enabled === 1,
+    lockPubkey: r.lock_pubkey,
+    lockFailedAttempts: r.lock_failed_attempts,
+    lockLockoutUntil: r.lock_lockout_until,
     muted: r.muted === 1,
     createdAt: r.created_at,
   };
@@ -82,6 +97,11 @@ export async function ensureConversation(id: string, contactId: string, retentio
     screenshotPending: false,
     screenshotPendingValue: null,
     screenshotPendingIncoming: false,
+    lockEnabled: false,
+    lockBioEnabled: false,
+    lockPubkey: null,
+    lockFailedAttempts: 0,
+    lockLockoutUntil: 0,
     muted: false,
     createdAt: now,
   };
@@ -135,4 +155,35 @@ export async function clearScreenshotPending(id: string): Promise<void> {
 
 export async function setConversationMuted(id: string, muted: boolean): Promise<void> {
   await getDb().execute('UPDATE conversations SET muted = ? WHERE id = ?', [muted ? 1 : 0, id]);
+}
+
+// The per chat lock is local only (never negotiated with the peer). Enabling stores the
+// sealing pubkey; disabling clears it together with the attempt counters.
+export async function setChatLock(
+  id: string,
+  state: { enabled: boolean; bioEnabled: boolean; pubkey: string | null },
+): Promise<void> {
+  await getDb().execute(
+    'UPDATE conversations SET lock_enabled = ?, lock_bio_enabled = ?, lock_pubkey = ?, lock_failed_attempts = 0, lock_lockout_until = 0 WHERE id = ?',
+    [state.enabled ? 1 : 0, state.bioEnabled ? 1 : 0, state.pubkey, id],
+  );
+}
+
+export async function setChatLockBio(id: string, on: boolean): Promise<void> {
+  await getDb().execute('UPDATE conversations SET lock_bio_enabled = ? WHERE id = ?', [on ? 1 : 0, id]);
+}
+
+// Persisted (not in memory) so a force quit cannot reset the per chat lockout.
+export async function setChatLockAttempts(id: string, attempts: number, lockoutUntil: number): Promise<void> {
+  await getDb().execute(
+    'UPDATE conversations SET lock_failed_attempts = ?, lock_lockout_until = ? WHERE id = ?',
+    [attempts, lockoutUntil, id],
+  );
+}
+
+// All conversations whose chat lock is on, for the boot time self heal pass (sealing rows
+// that were inserted plaintext by a crash mid enable needs only the pubkey, no auth).
+export async function listLockedConversations(): Promise<Conversation[]> {
+  const result = await getDb().execute('SELECT * FROM conversations WHERE lock_enabled = 1');
+  return (result.rows as unknown as ConversationRow[]).map(toConversation);
 }

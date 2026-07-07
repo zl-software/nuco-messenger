@@ -12,6 +12,14 @@ import { randomBytes } from '@noble/hashes/utils.js';
 import type { SignedPreKeyPairType } from '@privacyresearch/libsignal-protocol-typescript';
 
 import { installNobleProvider, installNativeProvider } from '../src/crypto/provider';
+import {
+  generateChatLockKeys,
+  sealBody,
+  openBody,
+  isSealed,
+  wrapChatKeyWithCode,
+  unwrapChatKeyWithCode,
+} from '../src/crypto/chat-lock';
 import { InMemoryKvBackend, NucoSignalStore } from '../src/crypto/store';
 import {
   generateIdentity,
@@ -140,10 +148,68 @@ async function runFlow(label: string, install: () => void): Promise<void> {
   check(ok, 'transport auth signature verifies');
 }
 
+// The chat lock at-rest crypto is pure noble and does not go through the injected
+// provider, so one pass covers the app path.
+async function runChatLock(): Promise<void> {
+  console.log('\n  chat lock (per chat at-rest sealing)');
+
+  const keys = generateChatLockKeys();
+  const sealed = sealBody('meet at seven', keys.pubKeyB64, 'convo-1', 'msg-1');
+  check(isSealed(sealed.meta), 'sealed meta is recognized');
+  check(!isSealed(null) && !isSealed('{"v":9}'), 'plaintext and unknown meta are not sealed');
+  check(sealed.bodyB64 !== 'meet at seven', 'stored body is not the plaintext');
+
+  const opened = openBody(sealed.bodyB64, sealed.meta, keys.privKey, keys.pubKeyB64, 'convo-1', 'msg-1');
+  check(opened === 'meet at seven', 'seal and open round trip');
+
+  const other = generateChatLockKeys();
+  check(
+    throws(() => openBody(sealed.bodyB64, sealed.meta, other.privKey, keys.pubKeyB64, 'convo-1', 'msg-1')),
+    'wrong private key fails to open',
+  );
+
+  const tampered = base64ToBytes(sealed.bodyB64);
+  tampered[0] = tampered[0]! ^ 0xff;
+  check(
+    throws(() => openBody(bytesToBase64(tampered), sealed.meta, keys.privKey, keys.pubKeyB64, 'convo-1', 'msg-1')),
+    'tampered ciphertext fails to open',
+  );
+
+  check(
+    throws(() => openBody(sealed.bodyB64, sealed.meta, keys.privKey, keys.pubKeyB64, 'convo-1', 'msg-2')),
+    'row identity is bound (AAD mismatch fails)',
+  );
+  check(
+    throws(() => openBody(sealed.bodyB64, sealed.meta, keys.privKey, keys.pubKeyB64, 'convo-2', 'msg-1')),
+    'conversation identity is bound (AAD mismatch fails)',
+  );
+
+  const wrapped = await wrapChatKeyWithCode(keys.privKey, '4711');
+  const unwrapped = await unwrapChatKeyWithCode(wrapped, '4711');
+  check(bytesToBase64(unwrapped) === bytesToBase64(keys.privKey), 'code wrap and unwrap round trip');
+  let wrongCodeThrew = false;
+  try {
+    await unwrapChatKeyWithCode(wrapped, '0000');
+  } catch {
+    wrongCodeThrew = true;
+  }
+  check(wrongCodeThrew, 'wrong code fails the authenticated unwrap');
+}
+
+function throws(fn: () => unknown): boolean {
+  try {
+    fn();
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 async function main(): Promise<void> {
   console.log('crypto self test');
   await runFlow('native WebCrypto', installNativeProvider);
   await runFlow('noble pure JS (Hermes path)', installNobleProvider);
+  await runChatLock();
 
   if (failures > 0) {
     console.error(`\ncrypto self test FAILED with ${failures} failure(s)`);
