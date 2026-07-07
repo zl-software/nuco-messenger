@@ -301,7 +301,6 @@
   "contacts": {
     "title": "Kontakte",
     "search": "Kontakte durchsuchen",
-    "verifiedSection": "Verifiziert, persönlicher Scan",
     "unverifiedSection": "Nicht verifiziert",
     "verify": "Verifizieren",
     "verified": "Verifiziert",
@@ -433,7 +432,7 @@
     "wipeConfirmBody": "Deine Schlüssel und Nachrichten sind nur hier gespeichert und können nicht wiederhergestellt werden. Gedrückt halten zum Bestätigen.",
     "wipeHold": "Gedrückt halten zum Löschen",
     "deleteAccount": "Konto löschen",
-    "deleteAccountDetail": "Entferne dein Handle und deine Prekeys vom Server und lösche dann alles auf diesem Gerät.",
+    "deleteAccountDetail": "Entferne dein Handle vom Server und lösche dann alles auf diesem Gerät.",
     "deleteConfirmTitle": "Konto löschen?",
     "deleteConfirmBody": "Dies löscht dein Konto vom Server und entfernt alle Schlüssel und Nachrichten auf diesem Gerät. Es kann nicht rückgängig gemacht werden."
   },

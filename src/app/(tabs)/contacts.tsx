@@ -130,14 +130,9 @@ export default function ContactsScreen() {
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
-          {verified.length > 0 ? (
-            <View style={styles.section}>
-              <Text variant="eyebrow" color="textTertiary" style={styles.eyebrow}>
-                {t('contacts.verifiedSection')}
-              </Text>
-              {verified.map(renderContact)}
-            </View>
-          ) : null}
+          {/* No eyebrow over the verified section: every contact is added by an in person
+              scan, so the label stated nothing. Only the unverified stragglers get one. */}
+          {verified.length > 0 ? <View style={styles.section}>{verified.map(renderContact)}</View> : null}
 
           {unverified.length > 0 ? (
             <View style={styles.section}>

@@ -301,7 +301,6 @@
   "contacts": {
     "title": "Contacts",
     "search": "Search contacts",
-    "verifiedSection": "Verified, in person scan",
     "unverifiedSection": "Unverified",
     "verify": "Verify",
     "verified": "Verified",
@@ -433,7 +432,7 @@
     "wipeConfirmBody": "Your keys and messages are stored only here and cannot be recovered. Hold to confirm.",
     "wipeHold": "Hold to erase",
     "deleteAccount": "Delete account",
-    "deleteAccountDetail": "Remove your handle and prekeys from the server, then erase everything on this device.",
+    "deleteAccountDetail": "Remove your handle from the server, then erase everything on this device.",
     "deleteConfirmTitle": "Delete your account?",
     "deleteConfirmBody": "This deletes your account from the server and wipes all keys and messages on this device. It cannot be undone."
   },

@@ -1,5 +1,5 @@
 // Account deletion. Required by the app stores for any app that creates an account. It first
-// asks the relay to delete the server side record (device, prekeys, queued messages), then
+// asks the relay to delete the server side record (device record and queued messages), then
 // wipes every local trace, returning the app to a clean onboarding state.
 
 import { deleteDatabaseFile } from '@/db/client';
