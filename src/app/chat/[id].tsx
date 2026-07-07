@@ -2,8 +2,9 @@
 // incoming (surface) bubbles, a pinned retention banner, and a composer. Polls for inbound
 // messages and marks the conversation read on focus.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   AppState,
   Keyboard,
   KeyboardAvoidingView,
@@ -14,6 +15,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -22,7 +24,20 @@ import { useTranslation } from 'react-i18next';
 
 import { MESSAGE_BODY_MAX_LEN } from '@nuco/protocol';
 
-import { Avatar, Button, Card, ChatLockGate, ChevronLeft, Phone, Screen, SendArrow, Text, VerifiedShield } from '@/ui';
+import {
+  Avatar,
+  BottomSheet,
+  Button,
+  Card,
+  ChatLockGate,
+  ChevronLeft,
+  Close,
+  Phone,
+  Screen,
+  SendArrow,
+  Text,
+  VerifiedShield,
+} from '@/ui';
 import { Colors, Fonts, Overlay, Radius, Spacing } from '@/constants/theme';
 import { getContact, isMutuallyVerified, type Contact } from '@/db/repos/contacts';
 import { getConversationByContact, type Conversation } from '@/db/repos/conversations';
@@ -36,6 +51,8 @@ import {
   acceptScreenshotProtection,
   cancelRetention,
   cancelScreenshotProtection,
+  deleteMessageForEveryone,
+  deleteMessageForMe,
   markRead,
   resendSealedPending,
   sendText,
@@ -74,6 +91,11 @@ export default function ConversationScreen() {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [chatUnlocked, setChatUnlocked] = useState(() => (id ? isChatUnlocked(id) : false));
+  // The long pressed message (drives the action sheet) and the message being replied to
+  // (drives the composer reply bar and the outgoing replyTo reference).
+  const [menuTarget, setMenuTarget] = useState<Message | null>(null);
+  const [replyTarget, setReplyTarget] = useState<Message | null>(null);
+  const inputRef = useRef<TextInput>(null);
   const scrollRef = useRef<ScrollView>(null);
   // Whether the view is pinned to the newest message. Only then do content growth (a new
   // message) and layout shrink (the keyboard opening) auto scroll to the end; a user who
@@ -198,17 +220,100 @@ export default function ConversationScreen() {
     return () => clearInterval(interval);
   }, [loadMessages]);
 
+  // Resolve reply references against the loaded thread (the whole conversation is in
+  // memory). A miss renders the "original unavailable" placeholder.
+  const messageById = useMemo(() => {
+    const map = new Map<string, Message>();
+    for (const m of messages) map.set(m.id, m);
+    return map;
+  }, [messages]);
+
   const onSend = useCallback(async () => {
     const text = draft.trim();
     if (!text || !contact || sending) return;
     setSending(true);
     setDraft('');
+    const replyTo = replyTarget?.id;
+    setReplyTarget(null);
     // Sending while scrolled up still reveals the sent message.
     atBottomRef.current = true;
-    await sendText({ id: contact.id, handle: contact.handle }, text, conversation?.retentionSeconds ?? 86400);
+    await sendText({ id: contact.id, handle: contact.handle }, text, conversation?.retentionSeconds ?? 86400, replyTo);
     await loadMessages();
     setSending(false);
-  }, [draft, contact, conversation, sending, loadMessages]);
+  }, [draft, contact, conversation, sending, replyTarget, loadMessages]);
+
+  const openMessageMenu = useCallback((m: Message) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
+    setMenuTarget(m);
+  }, []);
+
+  const onMenuReply = useCallback(() => {
+    if (!menuTarget) return;
+    setReplyTarget(menuTarget);
+    setMenuTarget(null);
+    // Focus only once the sheet Modal is fully dismissed; focusing under a dismissing
+    // Modal loses the keyboard on iOS (the sheet close animation runs 200ms).
+    setTimeout(() => inputRef.current?.focus(), 300);
+  }, [menuTarget]);
+
+  // Both delete confirms close the sheet first and delay the alert past the sheet's close
+  // animation: iOS anchors an alert to the presented Modal, and a dismissing Modal takes
+  // its alert down with it.
+  const onMenuDeleteForMe = useCallback(() => {
+    const m = menuTarget;
+    const c = contact;
+    if (!m || !c) return;
+    setMenuTarget(null);
+    setTimeout(() => {
+      Alert.alert(
+        t('conversation.deleteForMeTitle'),
+        t('conversation.deleteForMeBody'),
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          {
+            text: t('common.delete'),
+            style: 'destructive',
+            onPress: () => {
+              void (async () => {
+                setReplyTarget((prev) => (prev?.id === m.id ? null : prev));
+                await deleteMessageForMe(c.id, m.id);
+                await loadMessages();
+              })();
+            },
+          },
+        ],
+        { cancelable: true },
+      );
+    }, 300);
+  }, [menuTarget, contact, t, loadMessages]);
+
+  const onMenuDeleteForEveryone = useCallback(() => {
+    const m = menuTarget;
+    const c = contact;
+    if (!m || !c) return;
+    setMenuTarget(null);
+    setTimeout(() => {
+      Alert.alert(
+        t('conversation.deleteForEveryoneTitle'),
+        t('conversation.deleteForEveryoneBody', { name: c.displayName }),
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          {
+            text: t('common.delete'),
+            style: 'destructive',
+            onPress: () => {
+              void (async () => {
+                setReplyTarget((prev) => (prev?.id === m.id ? null : prev));
+                await deleteMessageForEveryone({ id: c.id, handle: c.handle }, m.id);
+                await loadMessages();
+              })();
+            },
+          },
+        ],
+        { cancelable: true },
+      );
+    }, 300);
+  }, [menuTarget, contact, t, loadMessages]);
 
   // Synchronous in-flight guard: the banner only unmounts after the async reload, so a
   // double tap would otherwise run the handler twice and log the change twice.
@@ -450,9 +555,10 @@ export default function ConversationScreen() {
               if (atBottomRef.current) scrollRef.current?.scrollToEnd({ animated: false });
             }}
           >
-            {/* Bubbles carry no touch handlers, so a tap anywhere on the thread (including
-                below the last message, via flexGrow) lands here and closes the keyboard.
-                Scroll gestures still win over the press via responder negotiation. */}
+            {/* A tap anywhere on the thread (including below the last message, via flexGrow)
+                closes the keyboard: this Pressable catches taps between bubbles, and the
+                bubbles' own onPress (needed because their long press handler swallows the
+                tap) does the same. Scroll gestures still win via responder negotiation. */}
             <Pressable style={styles.list} onPress={() => Keyboard.dismiss()}>
               {messages.map((m) => {
                 if (m.kind !== 'text') {
@@ -469,16 +575,54 @@ export default function ConversationScreen() {
                   );
                 }
                 const outgoing = m.direction === 'out';
+                // The quoted block inside a reply bubble. Resolved from memory at render
+                // only; quoted plaintext is never persisted (the chat lock is not bypassed).
+                const quoted = m.replyToId != null ? messageById.get(m.replyToId) : undefined;
+                const quote =
+                  m.replyToId != null ? (
+                    <View style={styles.quote}>
+                      <View style={styles.quoteRule} />
+                      <View style={styles.quoteText}>
+                        {quoted && quoted.kind === 'text' ? (
+                          <>
+                            <Text variant="caption" color="accent" numberOfLines={1}>
+                              {quoted.direction === 'out' ? t('conversation.you') : contact.displayName}
+                            </Text>
+                            <Text
+                              variant="caption"
+                              style={outgoing ? styles.quoteBodyOut : styles.quoteBodyIn}
+                              numberOfLines={1}
+                            >
+                              {displayBody(quoted)}
+                            </Text>
+                          </>
+                        ) : (
+                          <Text
+                            variant="caption"
+                            style={outgoing ? styles.quoteBodyOut : styles.quoteBodyIn}
+                            numberOfLines={1}
+                          >
+                            {t('conversation.replyMissing')}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                  ) : null;
                 return (
                   <View key={m.id} style={[styles.bubbleRow, outgoing ? styles.bubbleRowOut : styles.bubbleRowIn]}>
                     {outgoing ? (
-                      <View style={styles.bubbleWrapOut}>
+                      <Pressable
+                        style={styles.bubbleWrapOut}
+                        onPress={() => Keyboard.dismiss()}
+                        onLongPress={() => openMessageMenu(m)}
+                      >
                         <LinearGradient
                           colors={[Colors.outgoingBubbleTop, Colors.outgoingBubbleBottom]}
                           start={{ x: 0, y: 0 }}
                           end={{ x: 0, y: 1 }}
                           style={[styles.bubble, styles.bubbleOut]}
                         >
+                          {quote}
                           <Text variant="body" style={styles.outText}>
                             {displayBody(m)}
                           </Text>
@@ -486,13 +630,18 @@ export default function ConversationScreen() {
                         <Text variant="caption" color={m.status === 'failed' ? 'danger' : 'textTertiary'} style={styles.statusText}>
                           {t(statusKey(m.status))}
                         </Text>
-                      </View>
+                      </Pressable>
                     ) : (
-                      <View style={[styles.bubble, styles.bubbleIn]}>
+                      <Pressable
+                        style={[styles.bubble, styles.bubbleIn]}
+                        onPress={() => Keyboard.dismiss()}
+                        onLongPress={() => openMessageMenu(m)}
+                      >
+                        {quote}
                         <Text variant="body" color="text">
                           {displayBody(m)}
                         </Text>
-                      </View>
+                      </Pressable>
                     )}
                   </View>
                 );
@@ -508,24 +657,43 @@ export default function ConversationScreen() {
               { paddingBottom: keyboardVisible ? Spacing.md : Math.max(insets.bottom, Spacing.md) },
             ]}
           >
-            <View style={styles.inputWrap}>
-              <TextInput
-                value={draft}
-                onChangeText={setDraft}
-                placeholder={t('conversation.composerPlaceholder')}
-                placeholderTextColor={Colors.textSecondary}
-                style={styles.input}
-                maxLength={MESSAGE_BODY_MAX_LEN}
-                multiline
-              />
+            {replyTarget ? (
+              <View style={styles.replyBar}>
+                <View style={styles.replyRule} />
+                <View style={styles.replyBarText}>
+                  <Text variant="caption" color="accent" numberOfLines={1}>
+                    {replyTarget.direction === 'out' ? t('conversation.you') : contact.displayName}
+                  </Text>
+                  <Text variant="caption" color="textSecondary" numberOfLines={1}>
+                    {displayBody(replyTarget)}
+                  </Text>
+                </View>
+                <Pressable onPress={() => setReplyTarget(null)} hitSlop={8} style={styles.replyClose}>
+                  <Close size={16} color={Colors.textSecondary} />
+                </Pressable>
+              </View>
+            ) : null}
+            <View style={styles.composerRow}>
+              <View style={styles.inputWrap}>
+                <TextInput
+                  ref={inputRef}
+                  value={draft}
+                  onChangeText={setDraft}
+                  placeholder={t('conversation.composerPlaceholder')}
+                  placeholderTextColor={Colors.textSecondary}
+                  style={styles.input}
+                  maxLength={MESSAGE_BODY_MAX_LEN}
+                  multiline
+                />
+              </View>
+              <Pressable
+                onPress={onSend}
+                disabled={!draft.trim() || sending}
+                style={[styles.sendBtn, !draft.trim() || sending ? styles.sendBtnDisabled : null]}
+              >
+                <SendArrow size={22} color={Colors.accentInk} />
+              </Pressable>
             </View>
-            <Pressable
-              onPress={onSend}
-              disabled={!draft.trim() || sending}
-              style={[styles.sendBtn, !draft.trim() || sending ? styles.sendBtnDisabled : null]}
-            >
-              <SendArrow size={22} color={Colors.accentInk} />
-            </Pressable>
           </View>
         ) : (
           // The gate: no composer until mutual verification. The send path enforces it too;
@@ -544,6 +712,34 @@ export default function ConversationScreen() {
           </Card>
         )}
       </KeyboardAvoidingView>
+
+      <BottomSheet
+        visible={menuTarget != null}
+        title={t('conversation.messageMenuTitle')}
+        onClose={() => setMenuTarget(null)}
+      >
+        <View>
+          <Pressable style={styles.optionRow} onPress={onMenuReply}>
+            <Text variant="label" color="text">
+              {t('conversation.menuReply')}
+            </Text>
+          </Pressable>
+          <Pressable style={styles.optionRow} onPress={onMenuDeleteForMe}>
+            <Text variant="label" color="danger">
+              {t('conversation.menuDeleteForMe')}
+            </Text>
+          </Pressable>
+          {menuTarget?.direction === 'out' ? (
+            // Only own messages can be retracted from the peer's device; the service and
+            // the receiver re-enforce this.
+            <Pressable style={styles.optionRow} onPress={onMenuDeleteForEveryone}>
+              <Text variant="label" color="danger">
+                {t('conversation.menuDeleteForEveryone')}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+      </BottomSheet>
     </Screen>
   );
 }
@@ -622,11 +818,49 @@ const styles = StyleSheet.create({
   // The bottom padding is applied inline: the safe area inset when the keyboard is closed,
   // Spacing.md against the keyboard when open.
   composer: {
+    paddingTop: Spacing.sm,
+    paddingHorizontal: Spacing.xl,
+    gap: Spacing.sm,
+  },
+  composerRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: Spacing.sm,
-    paddingTop: Spacing.sm,
-    paddingHorizontal: Spacing.xl,
+  },
+  replyBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.surface1,
+    borderRadius: Radius.input,
+    borderWidth: 1,
+    borderColor: Overlay.hairline,
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+  },
+  replyRule: { width: 3, alignSelf: 'stretch', borderRadius: 2, backgroundColor: Colors.accent },
+  replyBarText: { flex: 1, gap: 1 },
+  replyClose: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+  quote: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    backgroundColor: Overlay.fill,
+    borderRadius: 10,
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    marginBottom: Spacing.xs,
+  },
+  quoteRule: { width: 3, alignSelf: 'stretch', borderRadius: 2, backgroundColor: Colors.accent },
+  quoteText: { flexShrink: 1, gap: 1 },
+  quoteBodyOut: { color: Colors.outgoingText, opacity: 0.85 },
+  quoteBodyIn: { color: Colors.textSecondary },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: Overlay.hairlineSoft,
   },
   lockGateWrap: { flex: 1, paddingHorizontal: Spacing.xl },
   inputWrap: {

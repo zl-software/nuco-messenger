@@ -121,7 +121,17 @@
     "pendingVerification": "Verifizierung ausstehend",
     "verifyCta": "Gegenseitig verifizieren",
     "pendingTitle": "Verifizierung ausstehend",
-    "pendingBody": "Ihr könnt chatten, sobald du und {{name}} euch gegenseitig gescannt und bestätigt habt, dass die Emojis übereinstimmen."
+    "pendingBody": "Ihr könnt chatten, sobald du und {{name}} euch gegenseitig gescannt und bestätigt habt, dass die Emojis übereinstimmen.",
+    "messageMenuTitle": "Nachricht",
+    "menuReply": "Antworten",
+    "menuDeleteForMe": "Für mich löschen",
+    "menuDeleteForEveryone": "Für alle löschen",
+    "deleteForMeTitle": "Diese Nachricht löschen?",
+    "deleteForMeBody": "Dies entfernt die Nachricht nur von diesem Gerät. Es kann nicht rückgängig gemacht werden.",
+    "deleteForEveryoneTitle": "Für alle löschen?",
+    "deleteForEveryoneBody": "Dies entfernt die Nachricht auf diesem Gerät und bittet das Gerät von {{name}}, sie ebenfalls zu entfernen. Es kann nicht rückgängig gemacht werden.",
+    "you": "Du",
+    "replyMissing": "Ursprüngliche Nachricht nicht verfügbar"
   },
   "retention": {
     "title": "Verschwindende Nachrichten",

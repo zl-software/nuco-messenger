@@ -121,7 +121,17 @@
     "pendingVerification": "verification pending",
     "verifyCta": "Verify each other",
     "pendingTitle": "Verification pending",
-    "pendingBody": "You can chat once you and {{name}} have scanned each other and confirmed the emojis match."
+    "pendingBody": "You can chat once you and {{name}} have scanned each other and confirmed the emojis match.",
+    "messageMenuTitle": "Message",
+    "menuReply": "Reply",
+    "menuDeleteForMe": "Delete for me",
+    "menuDeleteForEveryone": "Delete for everyone",
+    "deleteForMeTitle": "Delete this message?",
+    "deleteForMeBody": "This removes the message from this device only. It cannot be undone.",
+    "deleteForEveryoneTitle": "Delete for everyone?",
+    "deleteForEveryoneBody": "This removes the message on this device and asks {{name}}'s device to remove it too. It cannot be undone.",
+    "you": "You",
+    "replyMissing": "Original message unavailable"
   },
   "retention": {
     "title": "Disappearing messages",
