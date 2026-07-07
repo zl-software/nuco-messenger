@@ -45,6 +45,9 @@ export interface Message {
   sentAt: number;
   expiresAt: number | null;
   read: boolean;
+  // Shared id of the quoted text when this row is a reply (both peers key a text by the
+  // same envelope id). Resolved best effort at render; the referenced row may be gone.
+  replyToId?: string | null;
 }
 
 interface MessageRow {
@@ -58,6 +61,7 @@ interface MessageRow {
   sent_at: number;
   expires_at: number | null;
   read: number;
+  reply_to_id: string | null;
 }
 
 function toMessage(r: MessageRow): Message {
@@ -72,15 +76,40 @@ function toMessage(r: MessageRow): Message {
     sentAt: r.sent_at,
     expiresAt: r.expires_at,
     read: r.read === 1,
+    replyToId: r.reply_to_id,
   };
 }
 
 export async function insertMessage(m: Message): Promise<void> {
   await getDb().execute(
-    `INSERT OR IGNORE INTO messages (id, conversation_id, direction, kind, ciphertext_meta, body_encrypted, status, sent_at, expires_at, read)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [m.id, m.conversationId, m.direction, m.kind, m.meta ?? null, m.body, m.status, m.sentAt, m.expiresAt, m.read ? 1 : 0],
+    `INSERT OR IGNORE INTO messages (id, conversation_id, direction, kind, ciphertext_meta, body_encrypted, status, sent_at, expires_at, read, reply_to_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [m.id, m.conversationId, m.direction, m.kind, m.meta ?? null, m.body, m.status, m.sentAt, m.expiresAt, m.read ? 1 : 0, m.replyToId ?? null],
   );
+}
+
+export async function getMessage(id: string): Promise<Message | null> {
+  const result = await getDb().execute('SELECT * FROM messages WHERE id = ?', [id]);
+  const row = result.rows[0] as unknown as MessageRow | undefined;
+  return row ? toMessage(row) : null;
+}
+
+// Delete for me: local only. Also cancels an interrupted resend of the row, since the
+// boot time resend derives from rows still marked 'sending'.
+export async function deleteMessage(id: string): Promise<void> {
+  await getDb().execute('DELETE FROM messages WHERE id = ?', [id]);
+}
+
+// The receive side of message/delete. The direction predicate is the authorization check
+// (a peer may only retract what they authored), the conversation scope stops ids replayed
+// across chats, and the kind keeps system rows out of reach. A miss (already expired,
+// cleared, or never stored) deletes nothing, which is the correct silent no-op.
+export async function deletePeerAuthoredMessage(id: string, conversationId: string): Promise<number> {
+  const result = await getDb().execute(
+    "DELETE FROM messages WHERE id = ? AND conversation_id = ? AND direction = 'in' AND kind = 'text'",
+    [id, conversationId],
+  );
+  return result.rowsAffected ?? 0;
 }
 
 // Used by the enable (seal) and disable (unseal) history passes.
@@ -123,6 +152,7 @@ export interface PendingOutbound {
   conversationId: string;
   body: string;
   handle: string;
+  replyToId: string | null;
 }
 
 // Outgoing text still marked 'sending' was interrupted (the in memory relay queue is lost on
@@ -131,7 +161,7 @@ export interface PendingOutbound {
 // private key can recover the plaintext (see listPendingOutboundSealed).
 export async function listPendingOutbound(): Promise<PendingOutbound[]> {
   const result = await getDb().execute(
-    `SELECT m.id, m.conversation_id AS conversationId, m.body_encrypted AS body, c.handle
+    `SELECT m.id, m.conversation_id AS conversationId, m.body_encrypted AS body, m.reply_to_id AS replyToId, c.handle
      FROM messages m JOIN contacts c ON c.id = m.conversation_id
      WHERE m.direction = 'out' AND m.kind = 'text' AND m.status = 'sending' AND m.body_encrypted IS NOT NULL
        AND m.ciphertext_meta IS NULL
@@ -148,7 +178,7 @@ export interface PendingOutboundSealed extends PendingOutbound {
 // that chat, the only moment the plaintext can be recovered.
 export async function listPendingOutboundSealed(conversationId: string): Promise<PendingOutboundSealed[]> {
   const result = await getDb().execute(
-    `SELECT m.id, m.conversation_id AS conversationId, m.body_encrypted AS body, m.ciphertext_meta AS meta, c.handle
+    `SELECT m.id, m.conversation_id AS conversationId, m.body_encrypted AS body, m.ciphertext_meta AS meta, m.reply_to_id AS replyToId, c.handle
      FROM messages m JOIN contacts c ON c.id = m.conversation_id
      WHERE m.conversation_id = ? AND m.direction = 'out' AND m.kind = 'text' AND m.status = 'sending'
        AND m.body_encrypted IS NOT NULL AND m.ciphertext_meta IS NOT NULL

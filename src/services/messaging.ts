@@ -18,6 +18,9 @@ import {
   clearScreenshotPending,
 } from '@/db/repos/conversations';
 import {
+  deleteMessage,
+  deletePeerAuthoredMessage,
+  getMessage,
   insertMessage,
   listPendingOutbound,
   listPendingOutboundSealed,
@@ -132,8 +135,14 @@ export async function sendContent(handle: string, content: MessageContent, id: s
   await relay.sendEnvelope(handle, { id, ciphertext: sealed.ciphertext, messageType: sealed.messageType, sentAt: Date.now() });
 }
 
-// conversation id is the contact id (one to one).
-export async function sendText(contact: { id: string; handle: string }, text: string, retentionSeconds: number): Promise<void> {
+// conversation id is the contact id (one to one). replyTo quotes an earlier text by the
+// shared message id (see the repo comment); it rides inside the sealed content.
+export async function sendText(
+  contact: { id: string; handle: string },
+  text: string,
+  retentionSeconds: number,
+  replyTo?: string,
+): Promise<void> {
   const now = Date.now();
   const id = Crypto.randomUUID();
   const convo = await ensureConversation(contact.id, contact.id, retentionSeconds, now);
@@ -151,15 +160,20 @@ export async function sendText(contact: { id: string; handle: string }, text: st
     sentAt: now,
     expiresAt: expiryFor(retentionSeconds, now),
     read: true,
+    replyToId: replyTo ?? null,
   });
   emitConversationsChanged(contact.id);
   try {
-    await sendContent(contact.handle, { t: 'text', body: text }, id);
+    await sendContent(contact.handle, textContent(text, replyTo ?? null), id);
     await updateMessageStatus(id, 'sent');
   } catch {
     await updateMessageStatus(id, 'failed');
   }
   emitConversationsChanged(contact.id);
+}
+
+function textContent(body: string, replyTo: string | null): MessageContent {
+  return replyTo ? { t: 'text', body, replyTo } : { t: 'text', body };
 }
 
 // Re-send messages left in 'sending' after an app kill (the relay's outbound queue lives only
@@ -175,7 +189,7 @@ export async function resendPendingOutbound(): Promise<void> {
   }
   for (const p of pending) {
     try {
-      await sendContent(p.handle, { t: 'text', body: p.body }, p.id);
+      await sendContent(p.handle, textContent(p.body, p.replyToId), p.id);
       await updateMessageStatus(p.id, 'sent');
     } catch {
       await updateMessageStatus(p.id, 'failed');
@@ -197,13 +211,32 @@ export async function resendSealedPending(conversationId: string, lockPubkey: st
   for (const p of pending) {
     try {
       const body = openWithReleasedKey(conversationId, lockPubkey, p.id, p.body, p.meta);
-      await sendContent(p.handle, { t: 'text', body }, p.id);
+      await sendContent(p.handle, textContent(body, p.replyToId), p.id);
       await updateMessageStatus(p.id, 'sent');
     } catch {
       await updateMessageStatus(p.id, 'failed');
     }
     emitConversationsChanged(p.conversationId);
   }
+}
+
+// Delete for me: local only, nothing leaves the device. The emit is here because repos
+// never emit.
+export async function deleteMessageForMe(conversationId: string, messageId: string): Promise<void> {
+  await deleteMessage(messageId);
+  emitConversationsChanged(conversationId);
+}
+
+// Delete for everyone: remove the local row, then ask the peer to remove theirs (best
+// effort, like the retention and screenshot controls; an offline peer gets the queued
+// request on reconnect). The guards re-verify what the UI already gated: only own text
+// messages in this conversation can be retracted.
+export async function deleteMessageForEveryone(contact: { id: string; handle: string }, messageId: string): Promise<void> {
+  const m = await getMessage(messageId);
+  if (!m || m.conversationId !== contact.id || m.direction !== 'out' || m.kind !== 'text') return;
+  await deleteMessage(messageId);
+  emitConversationsChanged(contact.id);
+  await sendControl(contact.handle, { t: 'message/delete', id: messageId });
 }
 
 export async function retrySend(messageId: string, contact: { handle: string }, text: string): Promise<void> {
@@ -474,6 +507,7 @@ async function doReceiveEnvelope(from: string, envelope: MessageEnvelope): Promi
           sentAt: envelope.sentAt || now,
           expiresAt: expiryFor(convo.retentionSeconds, now),
           read: false,
+          replyToId: content.replyTo ?? null,
         });
         break;
       }
@@ -589,6 +623,17 @@ async function doReceiveEnvelope(from: string, envelope: MessageEnvelope): Promi
           content,
           envelope.sentAt || now,
         );
+        break;
+      case 'message/delete':
+        // The peer retracts a text they authored. The repo predicate enforces authorship
+        // (direction 'in'), conversation scope, and kind 'text'; a miss (already expired,
+        // cleared, or never stored) is a silent no-op. No tombstone row, consistent with
+        // the disappearing message model. Resurrection by redelivery is a non issue: the
+        // original text was acked in the same tick it was stored, so by the time anyone
+        // can delete it the relay queue no longer holds it (only an ack lost with a dying
+        // socket in that ms scale window could bring it back, and then it is simply
+        // deleted again).
+        await deletePeerAuthoredMessage(content.id, contact.id);
         break;
       case 'unknown':
         // Structured content from a newer peer: ack and drop, never render as text.

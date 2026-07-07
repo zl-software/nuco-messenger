@@ -51,6 +51,12 @@ export async function migrate(db: DB): Promise<void> {
       await db.execute('ALTER TABLE conversations ADD COLUMN lock_failed_attempts INTEGER NOT NULL DEFAULT 0');
       await db.execute('ALTER TABLE conversations ADD COLUMN lock_lockout_until INTEGER NOT NULL DEFAULT 0');
     }
+    // v6 -> v7: reply references. reply_to_id carries the shared message id of the quoted
+    // text (both peers key a text by the same envelope id). Deliberately no FK: the
+    // referenced row may already be gone; the UI resolves it best effort at render.
+    if (current < 7 && !(await columnExists(db, 'messages', 'reply_to_id'))) {
+      await db.execute('ALTER TABLE messages ADD COLUMN reply_to_id TEXT');
+    }
     await db.execute(
       'INSERT INTO meta(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
       ['schema_version', String(SCHEMA_VERSION)],

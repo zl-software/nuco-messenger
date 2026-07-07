@@ -107,6 +107,14 @@ export async function ensureConversation(id: string, contactId: string, retentio
   };
 }
 
+// Delete a conversation and (via the FK cascade) all its messages. The contact survives:
+// deleting a chat is not deleting the person, and the next message recreates the row with
+// defaults through ensureConversation. Chat lock SecureStore items do not cascade; callers
+// remove them explicitly (lock/chat-locks.ts removeChatLockSecrets).
+export async function deleteConversation(id: string): Promise<void> {
+  await getDb().execute('DELETE FROM conversations WHERE id = ?', [id]);
+}
+
 export async function setRetention(id: string, seconds: number): Promise<void> {
   await getDb().execute(
     'UPDATE conversations SET retention_seconds = ?, retention_pending = 0, retention_pending_value = NULL, retention_pending_incoming = 0 WHERE id = ?',

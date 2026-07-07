@@ -3,7 +3,7 @@
 // (sessions, prekeys, identity key pair) lives here too, because secure-store values are
 // size limited and the Signal store can exceed that limit.
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 export const SCHEMA: readonly string[] = [
   `CREATE TABLE IF NOT EXISTS meta (
@@ -64,7 +64,8 @@ export const SCHEMA: readonly string[] = [
     sent_at         INTEGER NOT NULL,
     expires_at      INTEGER,
     read            INTEGER NOT NULL DEFAULT 0,
-    kind            TEXT NOT NULL DEFAULT 'text'
+    kind            TEXT NOT NULL DEFAULT 'text',
+    reply_to_id     TEXT
   )`,
 
   `CREATE TABLE IF NOT EXISTS push_endpoints (
