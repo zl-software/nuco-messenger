@@ -10,6 +10,14 @@ export type MessageContent = {
 } | {
     readonly t: 'retention/cancel';
 } | {
+    readonly t: 'screenshot/request';
+    readonly on: boolean;
+} | {
+    readonly t: 'screenshot/accept';
+    readonly on: boolean;
+} | {
+    readonly t: 'screenshot/cancel';
+} | {
     readonly t: 'call/offer';
     readonly callId: string;
     readonly sdp: string;

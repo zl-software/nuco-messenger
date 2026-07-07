@@ -49,6 +49,9 @@ const MESSAGE_CONTENT_TYPE_MAP = {
     'retention/request': true,
     'retention/accept': true,
     'retention/cancel': true,
+    'screenshot/request': true,
+    'screenshot/accept': true,
+    'screenshot/cancel': true,
     'call/offer': true,
     'call/answer': true,
     'call/end': true,
@@ -102,6 +105,11 @@ function isMessageContent(v) {
                 o.value >= 0 &&
                 o.value <= RETENTION_MAX_SECONDS);
         case 'retention/cancel':
+            return true;
+        case 'screenshot/request':
+        case 'screenshot/accept':
+            return typeof o.on === 'boolean';
+        case 'screenshot/cancel':
             return true;
         case 'call/offer':
         case 'call/answer':
