@@ -1,12 +1,15 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
-import { Avatar, ChevronRight, Pill, Plus, Screen, SearchField, Text, VerifiedShield } from '@/ui';
-import { listContacts, type Contact } from '@/db/repos/contacts';
+import { Avatar, BottomSheet, ChevronRight, Pill, Plus, Screen, SearchField, SwipeableRow, Text, VerifiedShield } from '@/ui';
+import { deleteContact, listContacts, type Contact } from '@/db/repos/contacts';
 import { isDbOpen } from '@/db/client';
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { removeChatLockSecrets } from '@/lock/chat-locks';
+import { emitConversationsChanged } from '@/services/data-events';
+import { Colors, Overlay, Radius, Spacing } from '@/constants/theme';
 
 export default function ContactsScreen() {
   const { t } = useTranslation();
@@ -51,6 +54,63 @@ export default function ContactsScreen() {
     router.push({ pathname: '/contact/[id]', params: { id } });
   }
 
+  // Row delete (swipe or long press), mirroring the contact detail flow: the chat lock
+  // keystore items do not cascade with the db rows, the contact delete cascades the
+  // conversation and its messages.
+  const [actionTarget, setActionTarget] = useState<Contact | null>(null);
+
+  function confirmDelete(c: Contact) {
+    Alert.alert(
+      t('contactDetail.deleteConfirmTitle'),
+      t('contactDetail.deleteConfirmBody', { name: c.displayName }),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('contactDetail.deleteContact'),
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              await removeChatLockSecrets(c.id).catch(() => undefined);
+              await deleteContact(c.id);
+              emitConversationsChanged();
+              // This screen reloads on focus only; drop the row in place.
+              setContacts((prev) => prev.filter((x) => x.id !== c.id));
+            })();
+          },
+        },
+      ],
+      { cancelable: true },
+    );
+  }
+
+  function onRowLongPress(c: Contact) {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
+    setActionTarget(c);
+  }
+
+  // Close the sheet before the alert and wait out its close animation: iOS anchors an
+  // alert to the presented Modal, and a dismissing Modal takes its alert down with it.
+  function onSheetDelete() {
+    const c = actionTarget;
+    if (!c) return;
+    setActionTarget(null);
+    setTimeout(() => confirmDelete(c), 300);
+  }
+
+  const renderContact = (c: Contact) => (
+    <SwipeableRow
+      key={c.id}
+      actions={[{ key: 'delete', label: t('common.delete'), tone: 'danger', onPress: () => confirmDelete(c) }]}
+    >
+      <ContactRow
+        contact={c}
+        onPress={() => openContact(c.id)}
+        onLongPress={() => onRowLongPress(c)}
+        verifyLabel={t('contacts.verify')}
+      />
+    </SwipeableRow>
+  );
+
   return (
     <Screen edges={['top']} contentStyle={styles.content}>
       <View style={styles.header}>
@@ -75,9 +135,7 @@ export default function ContactsScreen() {
               <Text variant="eyebrow" color="textTertiary" style={styles.eyebrow}>
                 {t('contacts.verifiedSection')}
               </Text>
-              {verified.map((c) => (
-                <ContactRow key={c.id} contact={c} onPress={() => openContact(c.id)} verifyLabel={t('contacts.verify')} />
-              ))}
+              {verified.map(renderContact)}
             </View>
           ) : null}
 
@@ -86,9 +144,7 @@ export default function ContactsScreen() {
               <Text variant="eyebrow" color="textTertiary" style={styles.eyebrow}>
                 {t('contacts.unverifiedSection')}
               </Text>
-              {unverified.map((c) => (
-                <ContactRow key={c.id} contact={c} onPress={() => openContact(c.id)} verifyLabel={t('contacts.verify')} />
-              ))}
+              {unverified.map(renderContact)}
             </View>
           ) : null}
         </ScrollView>
@@ -98,6 +154,20 @@ export default function ContactsScreen() {
         <Plus size={18} color={Colors.accentInk} />
         <Text style={styles.fabLabel}>{t('contacts.addContact')}</Text>
       </Pressable>
+
+      <BottomSheet
+        visible={actionTarget != null}
+        title={actionTarget?.displayName ?? ''}
+        onClose={() => setActionTarget(null)}
+      >
+        <View>
+          <Pressable style={styles.optionRow} onPress={onSheetDelete}>
+            <Text variant="label" color="danger">
+              {t('contactDetail.deleteContact')}
+            </Text>
+          </Pressable>
+        </View>
+      </BottomSheet>
     </Screen>
   );
 }
@@ -105,15 +175,17 @@ export default function ContactsScreen() {
 function ContactRow({
   contact,
   onPress,
+  onLongPress,
   verifyLabel,
 }: {
   contact: Contact;
   onPress: () => void;
+  onLongPress: () => void;
   verifyLabel: string;
 }) {
   const isVerified = contact.status === 'verified';
   return (
-    <Pressable style={styles.row} onPress={onPress}>
+    <Pressable style={styles.row} onPress={onPress} onLongPress={onLongPress}>
       <Avatar name={contact.displayName} size={48} unverified={!isVerified} />
       <View style={styles.rowText}>
         <Text variant="rowTitle" numberOfLines={1}>
@@ -169,4 +241,12 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent,
   },
   fabLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 15, color: Colors.accentInk },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: Overlay.hairlineSoft,
+  },
 });
