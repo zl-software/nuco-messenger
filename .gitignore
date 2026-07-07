@@ -3,9 +3,9 @@
 # dependencies
 node_modules/
 
-# Expo
+# Expo (root dist only: vendor/protocol/dist is committed, see scripts/protocol-sync.ts)
 .expo/
-dist/
+/dist/
 web-build/
 expo-env.d.ts
 

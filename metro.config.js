@@ -1,25 +1,13 @@
 // Metro config for the Nuco app.
 //
-// The app consumes the shared @nuco/protocol package from the sibling protocol repo via
-// a local file dependency. We add that folder to watchFolders so changes to the contract
-// hot reload, and we let Metro resolve modules from both node_modules trees.
+// The app consumes the shared @nuco/protocol package from the committed copy in
+// vendor/protocol (synced from the sibling protocol repo by scripts/protocol-sync.ts, so
+// EAS cloud builds, which upload only this repo, can resolve it). The copy lives inside the
+// project root, so no extra watchFolders are needed.
 
 const { getDefaultConfig } = require('expo/metro-config');
-const path = require('path');
 
-const projectRoot = __dirname;
-const protocolRoot = path.resolve(projectRoot, '..', 'protocol');
-
-const config = getDefaultConfig(projectRoot);
-
-// Watch the sibling protocol repo so edits to the shared contract are picked up.
-config.watchFolders = [protocolRoot];
-
-// Resolve from the app first, then the protocol package's own node_modules.
-config.resolver.nodeModulesPaths = [
-  path.resolve(projectRoot, 'node_modules'),
-  path.resolve(protocolRoot, 'node_modules'),
-];
+const config = getDefaultConfig(__dirname);
 
 // Map the "buffer" specifier to the npm polyfill package rather than the Node builtin, which
 // Metro does not bundle. Some Signal dependencies expect a global Buffer in Hermes.

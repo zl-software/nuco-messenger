@@ -10,7 +10,7 @@
     "@noble/ciphers": "^2.2.0",
     "@noble/curves": "^2.2.0",
     "@noble/hashes": "^2.2.0",
-    "@nuco/protocol": "file:../protocol",
+    "@nuco/protocol": "file:vendor/protocol",
     "@op-engineering/op-sqlite": "^17.1.1",
     "@privacyresearch/libsignal-protocol-typescript": "^0.0.16",
     "@react-native-community/netinfo": "12.0.1",
@@ -70,7 +70,9 @@
     "typecheck": "tsc --noEmit",
     "crypto:selftest": "tsx scripts/crypto-selftest.ts",
     "i18n:check": "tsx scripts/i18n-check.ts",
-    "calls:check": "tsx scripts/call-machine-check.ts"
+    "calls:check": "tsx scripts/call-machine-check.ts",
+    "protocol:sync": "node scripts/protocol-sync.js",
+    "protocol:check": "node scripts/protocol-sync.js --check"
   },
   "private": true,
   "op-sqlite": {
