@@ -1,5 +1,6 @@
 // The chats list: a searchable list of conversation previews joined with their contact, with
-// verification, retention, and unread affordances. Reloads on focus.
+// verification and unread affordances. Rows share the contacts list layout (48px avatar,
+// title over caption subtitle, trailing meta cluster). Reloads on focus.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
@@ -13,7 +14,6 @@ import {
   BottomSheet,
   Button,
   Lock,
-  Pill,
   QrIcon,
   Plus,
   Screen,
@@ -39,7 +39,6 @@ interface ChatRow {
   direction: 'in' | 'out';
   kind: MessageKind;
   unread: number;
-  retentionSeconds: number;
   locked: boolean;
 }
 
@@ -76,7 +75,6 @@ export default function ChatsScreen() {
           direction: preview.direction,
           kind: preview.kind,
           unread: preview.unread,
-          retentionSeconds: convo?.retentionSeconds ?? 86400,
           locked: convo?.lockEnabled ?? false,
         });
       }
@@ -277,43 +275,37 @@ export default function ChatsScreen() {
                 onPress={() => openChat(item.contact.id)}
                 onLongPress={() => onRowLongPress(item)}
               >
-                <Avatar name={item.contact.displayName} size={52} unverified={item.contact.status !== 'verified'} />
-                <View style={styles.rowBody}>
-                  <View style={styles.rowTop}>
-                    <View style={styles.nameWrap}>
-                      <Text variant="rowTitle" color="text" numberOfLines={1}>
-                        {item.contact.displayName}
-                      </Text>
-                      {item.contact.status === 'verified' ? <VerifiedShield size={14} color={Colors.accent} /> : null}
-                    </View>
-                    <Text variant="caption" color={unreadStyle ? 'accent' : 'textTertiary'}>
-                      {formatTime(item.sentAt)}
+                <Avatar name={item.contact.displayName} size={48} unverified={item.contact.status !== 'verified'} />
+                <View style={styles.rowText}>
+                  <View style={styles.nameWrap}>
+                    <Text variant="rowTitle" color="text" numberOfLines={1} style={styles.name}>
+                      {item.contact.displayName}
                     </Text>
+                    {item.contact.status === 'verified' ? <VerifiedShield size={14} color={Colors.accent} /> : null}
                   </View>
-                  <View style={styles.rowBottom}>
+                  <View style={styles.subtitle}>
                     {item.locked ? <Lock size={13} color={Colors.textTertiary} /> : null}
                     <Text
-                      variant="bodySecondary"
+                      variant="caption"
                       color={unreadStyle ? 'text' : 'textSecondary'}
                       numberOfLines={1}
                       style={styles.preview}
                     >
                       {preview}
                     </Text>
-                    <View style={styles.rowMeta}>
-                      <Pill
-                        label={retentionLabel(item.retentionSeconds, t)}
-                        tone={item.retentionSeconds <= 0 ? 'neutral' : 'accent'}
-                      />
-                      {item.unread > 0 ? (
-                        <View style={styles.badge}>
-                          <Text variant="caption" color="accentInk" style={styles.badgeText}>
-                            {item.unread}
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
                   </View>
+                </View>
+                <View style={styles.rowEnd}>
+                  <Text variant="caption" color={unreadStyle ? 'accent' : 'textTertiary'}>
+                    {formatTime(item.sentAt)}
+                  </Text>
+                  {item.unread > 0 ? (
+                    <View style={styles.badge}>
+                      <Text variant="caption" color="accentInk" style={styles.badgeText}>
+                        {item.unread}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
               </Pressable>
             </SwipeableRow>
@@ -344,13 +336,14 @@ export default function ChatsScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { paddingHorizontal: Spacing.xl },
+  screen: { paddingHorizontal: 0 },
   header: {
     flexDirection: 'row',
     // Top aligned so the display title sits at the same height as on the contacts and
     // settings tabs (centering it in the 40px icon button row pushed it 2px lower).
     alignItems: 'flex-start',
     justifyContent: 'space-between',
+    paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.sm,
     paddingBottom: Spacing.lg,
   },
@@ -365,15 +358,21 @@ const styles = StyleSheet.create({
     borderColor: Overlay.hairline,
   },
   composeBtn: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  search: { marginBottom: Spacing.lg },
-  list: { paddingBottom: Spacing.xxl, gap: Spacing.xs },
-  row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingVertical: Spacing.md },
-  rowBody: { flex: 1, gap: Spacing.xs },
-  rowTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm },
-  nameWrap: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, flexShrink: 1 },
-  rowBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm },
+  search: { marginHorizontal: Spacing.xl, marginBottom: Spacing.lg },
+  list: { paddingBottom: Spacing.xxl },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: 11,
+  },
+  rowText: { flex: 1, gap: 2 },
+  nameWrap: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
+  name: { flexShrink: 1 },
+  subtitle: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
   preview: { flex: 1 },
-  rowMeta: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
+  rowEnd: { alignItems: 'flex-end', gap: Spacing.xs },
   badge: {
     minWidth: 20,
     height: 20,
@@ -384,7 +383,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   badgeText: { fontFamily: Fonts.semibold },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.md, paddingHorizontal: Spacing.lg },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.md, paddingHorizontal: Spacing.xxxl },
   emptyTile: {
     width: 96,
     height: 96,
