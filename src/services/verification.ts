@@ -34,6 +34,23 @@ import {
 // Deleted again when a send fails, so the reconnect resend can retry.
 const sentThisRun = new Set<string>();
 
+// The last relay error per handle for a failed confirm send (the wire error code, e.g.
+// NO_SUCH_HANDLE when the peer is registered on a different relay). Surfaced by the
+// verify screen so the waiting state cannot hang silently forever. In memory only.
+const confirmErrors = new Map<string, string>();
+
+export function getConfirmError(handle: string): string | null {
+  return confirmErrors.get(handle) ?? null;
+}
+
+// Explicit retry from the verify screen after a surfaced failure.
+export async function retryConfirm(contact: Contact): Promise<void> {
+  sentThisRun.delete(contact.handle);
+  confirmErrors.delete(contact.handle);
+  emitConversationsChanged(contact.id);
+  await sendConfirm(contact);
+}
+
 // Wire the inbound handlers into messaging (setter pattern, so messaging never imports
 // this module and no import cycle forms). Called from boot before the relay starts.
 export function initVerificationService(): void {
@@ -137,7 +154,11 @@ async function sendConfirm(contact: Contact): Promise<void> {
       },
       Crypto.randomUUID(),
     );
-  } catch {
+    if (confirmErrors.delete(contact.handle)) emitConversationsChanged(contact.id);
+  } catch (err) {
     sentThisRun.delete(contact.handle);
+    // The relay rejection carries the wire error code as the message (see transport/relay).
+    confirmErrors.set(contact.handle, err instanceof Error && err.message ? err.message : 'generic');
+    emitConversationsChanged(contact.id);
   }
 }

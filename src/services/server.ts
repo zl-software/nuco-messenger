@@ -52,3 +52,21 @@ export function healthUrlFor(wsUrl: string): string {
   const httpUrl = wsUrl.replace(/^ws/, 'http');
   return `${httpUrl.replace(/\/$/, '')}/health`;
 }
+
+// Canonical form for comparing two relay URLs (the scanned card's server against the
+// local one): lowercase scheme and host, default port and trailing slashes dropped.
+// String based on purpose (Hermes has no reliable URL parser); ws and wss stay distinct.
+export function normalizeServerUrl(url: string): string {
+  const withProto = withScheme(url);
+  const m = /^(wss?):\/\/([^/]+)(\/.*)?$/i.exec(withProto);
+  if (!m) return withProto.replace(/\/+$/, '');
+  const scheme = m[1].toLowerCase();
+  const defaultPort = scheme === 'wss' ? ':443' : ':80';
+  const host = m[2].toLowerCase().replace(new RegExp(`${defaultPort}$`), '');
+  const path = (m[3] ?? '').replace(/\/+$/, '');
+  return `${scheme}://${host}${path}`;
+}
+
+export function isSameServer(a: string, b: string): boolean {
+  return normalizeServerUrl(a) === normalizeServerUrl(b);
+}

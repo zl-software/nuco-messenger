@@ -1,6 +1,8 @@
-// Contacts service: adding a contact from a scanned QR card. The card (v2) carries the
-// identity key AND the signed prekey, so the scan anchors the peer's key by physical
-// presence and establishes the session fully offline; the relay is not involved at all.
+// Contacts service: adding a contact from a scanned QR card. The card carries the
+// identity key AND the signed prekey (since v2), so the scan anchors the peer's key by
+// physical presence and establishes the session fully offline; the relay is not involved
+// at all. Since card v3 it also names the owner's relay, because handles are namespaced
+// per relay: a pair on different relays can never deliver, so the scan warns up front.
 // Communication stays locked until mutual verification completes (see verification.ts).
 
 import * as Crypto from 'expo-crypto';
@@ -10,6 +12,8 @@ import { isSessionInitiator } from '@/crypto/verification';
 import { getSignal, loadAccount, type Account } from './account';
 import { reconnectRelay } from './boot';
 import { formatFingerprint } from './onboarding';
+import { loadPrefs } from './prefs';
+import { defaultServerUrl, isSameServer, normalizeServerUrl, resolveServerUrl } from './server';
 import { upsertContact, getContactByHandle, type Contact } from '@/db/repos/contacts';
 import { ensureConversation } from '@/db/repos/conversations';
 
@@ -17,12 +21,14 @@ export type ScanOutcome =
   | { kind: 'added'; contact: Contact; alreadyExisted: boolean }
   | { kind: 'invalid' }
   | { kind: 'notNuco' }
-  | { kind: 'self' };
+  | { kind: 'self' }
+  | { kind: 'wrongServer'; cardServer: string; localServer: string }
+  | { kind: 'maybeWrongServer'; localServer: string };
 
 const DEFAULT_RETENTION_SECONDS = 86400;
 
 // The QR payload advertising this device's identity. Public data only, never a private key.
-export function buildContactCard(account: Account): ContactCard {
+export function buildContactCard(account: Account, serverUrl: string): ContactCard {
   return {
     v: CONTACT_CARD_VERSION,
     handle: account.handle,
@@ -31,6 +37,7 @@ export function buildContactCard(account: Account): ContactCard {
     signedPreKey: account.signedPreKey,
     fingerprint: formatFingerprint(account.identityKeyB64),
     displayName: account.displayName,
+    server: serverUrl,
   };
 }
 
@@ -48,11 +55,33 @@ export function parseScannedCode(data: string): ContactCard | 'invalid' | 'notNu
 
 // Add a contact from a scanned card. Fully offline: the card carries everything X3DH
 // needs, and physical presence anchors the identity key.
-export async function addContactFromCard(card: ContactCard): Promise<ScanOutcome> {
+export async function addContactFromCard(
+  card: ContactCard,
+  opts?: { ignoreServerMismatch?: boolean },
+): Promise<ScanOutcome> {
   // Scanning your own code would otherwise create a conversation with yourself.
   const account = await loadAccount();
   if (!account) return { kind: 'invalid' };
   if (card.handle === account.handle) return { kind: 'self' };
+
+  // Handles are namespaced per relay, so a pair on different relays can never message.
+  // An explicit mismatch is a hard stop; a legacy card (v1/v2, no server field) is only
+  // suspicious when the local user left the default relay, and stays overridable because
+  // the peer may well run an old app version on the same custom relay.
+  if (!opts?.ignoreServerMismatch) {
+    const localServer = resolveServerUrl(await loadPrefs());
+    const cardServer = card.server && /^wss?:\/\//i.test(card.server) ? card.server : null;
+    if (cardServer && !isSameServer(cardServer, localServer)) {
+      return {
+        kind: 'wrongServer',
+        cardServer: normalizeServerUrl(cardServer),
+        localServer: normalizeServerUrl(localServer),
+      };
+    }
+    if (!cardServer && !isSameServer(localServer, defaultServerUrl())) {
+      return { kind: 'maybeWrongServer', localServer: normalizeServerUrl(localServer) };
+    }
+  }
 
   const existing = await getContactByHandle(card.handle);
   // A re-scan showing a different identity key means the peer re-onboarded (or worse).

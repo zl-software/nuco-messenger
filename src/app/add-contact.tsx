@@ -6,25 +6,38 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 
 import { Button, Card, Close, QrCard, Screen, SegmentedControl, Text, VerifiedShield } from '@/ui';
 import { useSession } from '@/state/session';
-import { addContactFromCard, buildContactCard, parseScannedCode } from '@/services/contacts';
+import { useSettings } from '@/state/settings';
+import { addContactFromCard, buildContactCard, parseScannedCode, type ScanOutcome } from '@/services/contacts';
+import { resolveServerUrl } from '@/services/server';
 import { type ContactCard } from '@nuco/protocol';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 
 type Mode = 'show' | 'scan';
-// Scanning is fully offline since protocol 2.0 (the card carries the whole X3DH bundle),
-// so the offline and mismatch outcomes no longer exist.
-type ScanError = 'invalid' | 'notNuco' | 'self' | null;
+// Scanning is fully offline since protocol 2.0 (the card carries the whole X3DH bundle).
+// The only relay related outcome is the server mismatch pair: handles are namespaced per
+// relay, so a pair on different relays could never deliver a message.
+type ScanError =
+  | { kind: 'invalid' | 'notNuco' | 'self' }
+  | { kind: 'wrongServer'; cardServer: string; localServer: string }
+  | { kind: 'maybeWrongServer'; localServer: string };
 
 const SCAN_ERROR_COPY = {
   invalid: { tone: 'danger', title: 'addContact.invalidTitle', body: 'addContact.invalidBody', cta: 'addContact.tryAgain' },
   notNuco: { tone: 'warning', title: 'addContact.notNucoTitle', body: 'addContact.notNucoBody', cta: 'addContact.scanNuco' },
   self: { tone: 'warning', title: 'addContact.selfTitle', body: 'addContact.selfBody', cta: 'addContact.tryAgain' },
+  wrongServer: { tone: 'danger', title: 'addContact.wrongServerTitle', body: 'addContact.wrongServerBody', cta: 'addContact.tryAgain' },
+  maybeWrongServer: { tone: 'warning', title: 'addContact.maybeWrongServerTitle', body: 'addContact.maybeWrongServerBody', cta: 'addContact.tryAgain' },
 } as const;
+
+function outcomeToError(outcome: Exclude<ScanOutcome, { kind: 'added' }>): ScanError {
+  return outcome;
+}
 
 export default function AddContactScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const account = useSession((s) => s.account);
+  const serverUrl = useSettings((s) => resolveServerUrl(s));
   const lockStatus = useSession((s) => s.lockStatus);
   const { mode: initialMode } = useLocalSearchParams<{ mode?: Mode }>();
   const [mode, setMode] = useState<Mode>(initialMode === 'scan' ? 'scan' : 'show');
@@ -56,7 +69,7 @@ export default function AddContactScreen() {
       </View>
 
       {mode === 'show' ? (
-        <ShowCode card={account ? buildContactCard(account) : null} />
+        <ShowCode card={account ? buildContactCard(account, serverUrl) : null} />
       ) : (
         <ScanCode
           onAdded={(id) => router.replace({ pathname: '/verify/[id]', params: { id, from: 'scan' } })}
@@ -92,10 +105,13 @@ function ShowCode({ card }: { card: ContactCard | null }) {
 function ScanCode({ onAdded, onShowInstead }: { onAdded: (id: string) => void; onShowInstead: () => void }) {
   const { t } = useTranslation();
   const [permission, requestPermission] = useCameraPermissions();
-  const [error, setError] = useState<ScanError>(null);
+  const [error, setError] = useState<ScanError | null>(null);
   const [adding, setAdding] = useState(false);
   const [focus, setFocus] = useState<'on' | 'off'>('on');
   const handlingRef = useRef(false);
+  // The last successfully parsed card, kept so "Add anyway" on the legacy card warning can
+  // re-run the add with the server check overridden, without a second scan.
+  const cardRef = useRef<ContactCard | null>(null);
 
   async function onBarcode(data: string) {
     if (handlingRef.current) return;
@@ -104,22 +120,44 @@ function ScanCode({ onAdded, onShowInstead }: { onAdded: (id: string) => void; o
     try {
       const parsed = parseScannedCode(data);
       if (parsed === 'notNuco') {
-        setError('notNuco');
+        setError({ kind: 'notNuco' });
         return;
       }
       if (parsed === 'invalid') {
-        setError('invalid');
+        setError({ kind: 'invalid' });
         return;
       }
+      cardRef.current = parsed;
       const outcome = await addContactFromCard(parsed);
       if (outcome.kind === 'added') {
         onAdded(outcome.contact.id);
         return;
       }
-      setError(outcome.kind);
+      setError(outcomeToError(outcome));
     } catch {
       // Never leave the scan hanging silently (e.g. the relay is unreachable): surface an error.
-      setError('invalid');
+      setError({ kind: 'invalid' });
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function addAnyway() {
+    const card = cardRef.current;
+    if (!card) {
+      resetScan();
+      return;
+    }
+    setAdding(true);
+    try {
+      const outcome = await addContactFromCard(card, { ignoreServerMismatch: true });
+      if (outcome.kind === 'added') {
+        onAdded(outcome.contact.id);
+        return;
+      }
+      setError(outcomeToError(outcome));
+    } catch {
+      setError({ kind: 'invalid' });
     } finally {
       setAdding(false);
     }
@@ -127,6 +165,7 @@ function ScanCode({ onAdded, onShowInstead }: { onAdded: (id: string) => void; o
 
   function resetScan() {
     setError(null);
+    cardRef.current = null;
     handlingRef.current = false;
   }
 
@@ -191,14 +230,20 @@ function ScanCode({ onAdded, onShowInstead }: { onAdded: (id: string) => void; o
 
       {error ? (
         <View style={styles.errorOverlay}>
-          <Card tone={SCAN_ERROR_COPY[error].tone} style={styles.errorCard}>
+          <Card tone={SCAN_ERROR_COPY[error.kind].tone} style={styles.errorCard}>
             <Text variant="rowTitle" style={styles.errorTitle}>
-              {t(SCAN_ERROR_COPY[error].title)}
+              {t(SCAN_ERROR_COPY[error.kind].title)}
             </Text>
             <Text variant="bodySecondary" color="textSecondary" style={styles.errorBody}>
-              {t(SCAN_ERROR_COPY[error].body)}
+              {t(SCAN_ERROR_COPY[error.kind].body, {
+                cardServer: 'cardServer' in error ? error.cardServer : '',
+                localServer: 'localServer' in error ? error.localServer : '',
+              })}
             </Text>
-            <Button label={t(SCAN_ERROR_COPY[error].cta)} variant="secondary" onPress={resetScan} />
+            <Button label={t(SCAN_ERROR_COPY[error.kind].cta)} variant="secondary" onPress={resetScan} />
+            {error.kind === 'maybeWrongServer' ? (
+              <Button label={t('addContact.addAnyway')} variant="ghost" onPress={() => void addAnyway()} />
+            ) : null}
           </Card>
         </View>
       ) : null}

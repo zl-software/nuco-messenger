@@ -3,19 +3,42 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'reac
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
+import { ErrorCode } from '@nuco/protocol';
+
 import { Button, Card, ChevronLeft, QrCard, QrIcon, Screen, Text } from '@/ui';
 import { getContact, isMutuallyVerified, type Contact } from '@/db/repos/contacts';
 import { getSignal } from '@/services/account';
 import { buildContactCard } from '@/services/contacts';
 import { subscribeConversationsChanged } from '@/services/data-events';
-import { confirmVerification } from '@/services/verification';
+import { confirmVerification, getConfirmError, retryConfirm } from '@/services/verification';
+import { resolveServerUrl } from '@/services/server';
 import { useSession } from '@/state/session';
+import { useSettings } from '@/state/settings';
 import { Colors, Overlay, Spacing } from '@/constants/theme';
 
 interface Strings {
   safetyNumber: string;
   safetyNumberRows: string[];
   emoji: { emoji: string; name: string }[];
+}
+
+// Localized bodies for surfaced confirm failures, keyed by the wire error code. Typed
+// literal map because the i18n keys are strictly typed (no template keys).
+const CONFIRM_ERROR_KEYS = {
+  PROTOCOL_VERSION_MISMATCH: 'errors.PROTOCOL_VERSION_MISMATCH',
+  MALFORMED_MESSAGE: 'errors.MALFORMED_MESSAGE',
+  UNAUTHENTICATED: 'errors.UNAUTHENTICATED',
+  AUTH_FAILED: 'errors.AUTH_FAILED',
+  NOT_REGISTERED: 'errors.NOT_REGISTERED',
+  RATE_LIMITED: 'errors.RATE_LIMITED',
+  QUEUE_FULL: 'errors.QUEUE_FULL',
+  MESSAGE_TOO_LARGE: 'errors.MESSAGE_TOO_LARGE',
+  INTERNAL: 'errors.INTERNAL',
+} as const;
+type ConfirmErrorKey = (typeof CONFIRM_ERROR_KEYS)[keyof typeof CONFIRM_ERROR_KEYS] | 'errors.generic';
+
+function confirmErrorKey(code: string): ConfirmErrorKey {
+  return (CONFIRM_ERROR_KEYS as Partial<Record<string, ConfirmErrorKey>>)[code] ?? 'errors.generic';
 }
 
 // Seconds the user must wait, after the codes appear, before they can confirm a match. Keeps
@@ -32,8 +55,12 @@ export default function VerifyScreen() {
   const [countdown, setCountdown] = useState(VERIFY_DELAY_SECONDS);
   const [showCode, setShowCode] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+  const serverUrl = useSettings((s) => resolveServerUrl(s));
   // Memoized so the countdown rerenders do not regenerate the QR matrix every second.
-  const qrValue = useMemo(() => (account ? JSON.stringify(buildContactCard(account)) : null), [account]);
+  const qrValue = useMemo(
+    () => (account ? JSON.stringify(buildContactCard(account, serverUrl)) : null),
+    [account, serverUrl],
+  );
 
   useEffect(() => {
     let active = true;
@@ -98,6 +125,9 @@ export default function VerifyScreen() {
   const canVerify = strings != null && countdown === 0;
   const localConfirmed = contact?.localConfirmedAt != null;
   const mutual = contact != null && isMutuallyVerified(contact);
+  // Module state, re-read on every render; the conversationsChanged subscription above
+  // re-renders this screen whenever a confirm send fails or recovers.
+  const confirmError = contact ? getConfirmError(contact.handle) : null;
 
   return (
     <Screen edges={['top', 'bottom']} contentStyle={styles.content}>
@@ -164,6 +194,17 @@ export default function VerifyScreen() {
                 {t('verification.waitingBody', { name })}
               </Text>
             </Card>
+            {confirmError && contact ? (
+              <Card tone="danger" style={styles.stateCard}>
+                <Text variant="rowTitle">{t('verification.confirmFailedTitle')}</Text>
+                <Text variant="bodySecondary" color="textSecondary" style={styles.stateBody}>
+                  {confirmError === ErrorCode.NoSuchHandle
+                    ? t('verification.confirmFailedNoHandle', { name })
+                    : t(confirmErrorKey(confirmError))}
+                </Text>
+                <Button label={t('common.retry')} variant="secondary" onPress={() => void retryConfirm(contact)} />
+              </Card>
+            ) : null}
             {qrValue ? (
               <View style={styles.ownCode} onLayout={() => scrollRef.current?.scrollToEnd({ animated: true })}>
                 <QrCard value={qrValue} />
