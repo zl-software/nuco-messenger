@@ -95,7 +95,14 @@
     "emptyCta": "Scan a contact's code",
     "unverified": "Unverified, scan to confirm",
     "you": "You: {{text}}",
-    "hiddenPreview": "Message"
+    "hiddenPreview": "Message",
+    "clearAction": "Clear",
+    "clearChat": "Clear chat",
+    "deleteChat": "Delete chat",
+    "clearConfirmTitle": "Clear this chat?",
+    "clearConfirmBody": "This removes every message in this conversation from this device. It cannot be undone.",
+    "deleteConfirmTitle": "Delete this chat?",
+    "deleteConfirmBody": "This removes the conversation and all its messages from this device. {{name}} stays in your contacts. It cannot be undone."
   },
   "conversation": {
     "verifiedOnline": "verified, online",

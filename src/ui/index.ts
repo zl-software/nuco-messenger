@@ -13,6 +13,7 @@ export { TextField } from './TextField';
 export { SearchField } from './SearchField';
 export { QrCard } from './QrCard';
 export { BottomSheet } from './BottomSheet';
+export { SwipeableRow, type SwipeAction } from './SwipeableRow';
 export { PinDots, PinKeypad, PIN_LENGTH } from './PinPad';
 export { ChatLockGate } from './ChatLockGate';
 export * from './icons';

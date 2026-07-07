@@ -95,7 +95,14 @@
     "emptyCta": "Code eines Kontakts scannen",
     "unverified": "Nicht verifiziert, scannen zum Bestätigen",
     "you": "Du: {{text}}",
-    "hiddenPreview": "Nachricht"
+    "hiddenPreview": "Nachricht",
+    "clearAction": "Leeren",
+    "clearChat": "Chat leeren",
+    "deleteChat": "Chat löschen",
+    "clearConfirmTitle": "Diesen Chat leeren?",
+    "clearConfirmBody": "Dies entfernt alle Nachrichten dieser Unterhaltung von diesem Gerät. Es kann nicht rückgängig gemacht werden.",
+    "deleteConfirmTitle": "Diesen Chat löschen?",
+    "deleteConfirmBody": "Dies entfernt die Unterhaltung und alle ihre Nachrichten von diesem Gerät. {{name}} bleibt in deinen Kontakten. Es kann nicht rückgängig gemacht werden."
   },
   "conversation": {
     "verifiedOnline": "verifiziert, online",
