@@ -69,9 +69,10 @@ sibling `protocol/` repo, then sync and commit the vendor copy.
 ## Structure
 
 `crypto/` (Signal, providers, identity, verification primitives, safety number, SAS, store,
-secure storage, byte and text polyfills), `calls/` (controller state machine, webrtc
-engine, audio session, CallHost overlay, fake engine for Node), `db/` (op-sqlite SQLCipher,
-repos), `transport/` (relay client, push), `lock/` (controller, biometrics, pin),
+secure storage, the pure per chat sealing in chat-lock.ts, byte and text polyfills),
+`calls/` (controller state machine, webrtc engine, audio session, CallHost overlay, fake
+engine for Node), `db/` (op-sqlite SQLCipher, repos), `transport/` (relay client, push),
+`lock/` (controller, biometrics, pin, chat-locks for the per chat lock),
 `services/` (account, boot, calls, contacts, messaging, onboarding, prefs, relay, server,
 verification, dev), `state/` (zustand, UI only never keys), `ui/` (design system),
 `constants/theme.ts` (dark tokens), `i18n/`, `app/` (routes).
