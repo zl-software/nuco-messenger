@@ -16,6 +16,15 @@ const decoder = new TextDecoder(); // utf-8
 // covers every offered option while keeping now + value*1000 far below MAX_SAFE_INTEGER.
 export const MESSAGE_BODY_MAX_LEN = 16384;
 export const RETENTION_MAX_SECONDS = 365 * 24 * 60 * 60;
+// Message references. A text's envelope id doubles as its cross peer identity: the sender
+// uses one id as its local row key and as the envelope id, and the receiver stores the row
+// under that same envelope id. So `text.replyTo` (quote a message) and `message/delete.id`
+// (ask the peer to remove a text its sender authored) both name a message either side can
+// resolve with a plain key lookup. Ids are client generated UUIDs today; 64 leaves headroom
+// and matches CALL_ID_MAX_LEN. Deletion is cooperative client behavior, like screenshot
+// protection: the receiver removes the row only if the requesting peer authored it, and a
+// pre 2.3 peer drops the request as unknown content and keeps its copy.
+export const MESSAGE_ID_MAX_LEN = 64;
 // Voice call signaling bounds and shared timing. The sdp cap is a safety ceiling well above
 // an audio only, relay only offer or answer (roughly 1 to 3 KB, which pads into the 4096
 // bucket). Both sides time the ring against CALL_RING_TIMEOUT_SECONDS; the caller MUST send
@@ -56,6 +65,7 @@ const MESSAGE_CONTENT_TYPE_MAP = {
     'call/answer': true,
     'call/end': true,
     'verify/confirm': true,
+    'message/delete': true,
 };
 export const MESSAGE_CONTENT_TYPES = Object.keys(MESSAGE_CONTENT_TYPE_MAP);
 export function encodeContent(content) {
@@ -97,7 +107,9 @@ function isMessageContent(v) {
     const o = v;
     switch (o.t) {
         case 'text':
-            return typeof o.body === 'string' && o.body.length <= MESSAGE_BODY_MAX_LEN;
+            return (typeof o.body === 'string' &&
+                o.body.length <= MESSAGE_BODY_MAX_LEN &&
+                (o.replyTo === undefined || isMessageId(o.replyTo)));
         case 'retention/request':
         case 'retention/accept':
             return (typeof o.value === 'number' &&
@@ -128,9 +140,14 @@ function isMessageContent(v) {
                 o.reason.length <= CALL_END_REASON_MAX_LEN);
         case 'verify/confirm':
             return typeof o.cardHash === 'string' && o.cardHash.length === CARD_HASH_LEN;
+        case 'message/delete':
+            return isMessageId(o.id);
         default:
             return false;
     }
+}
+function isMessageId(v) {
+    return typeof v === 'string' && v.length > 0 && v.length <= MESSAGE_ID_MAX_LEN;
 }
 // Glare: both peers place a call to each other at the same time. Both sides resolve it
 // without an extra round trip by comparing the two call ids with plain code unit order:

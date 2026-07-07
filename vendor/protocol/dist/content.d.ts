@@ -1,6 +1,7 @@
 export type MessageContent = {
     readonly t: 'text';
     readonly body: string;
+    readonly replyTo?: string;
 } | {
     readonly t: 'retention/request';
     readonly value: number;
@@ -32,10 +33,14 @@ export type MessageContent = {
 } | {
     readonly t: 'verify/confirm';
     readonly cardHash: string;
+} | {
+    readonly t: 'message/delete';
+    readonly id: string;
 };
 export type MessageContentType = MessageContent['t'];
 export declare const MESSAGE_BODY_MAX_LEN = 16384;
 export declare const RETENTION_MAX_SECONDS: number;
+export declare const MESSAGE_ID_MAX_LEN = 64;
 export declare const CALL_ID_MAX_LEN = 64;
 export declare const CALL_SDP_MAX_LEN = 8192;
 export declare const CALL_END_REASON_MAX_LEN = 32;
