@@ -226,6 +226,8 @@ const styles = StyleSheet.create({
   status: { minHeight: 22, alignItems: 'center', justifyContent: 'center' },
   countdown: { marginVertical: Spacing.sm },
   footnote: { textAlign: 'center', marginTop: Spacing.lg },
-  bottom: { alignItems: 'center', gap: Spacing.lg },
+  // The extra bottom padding lifts the keypad off the screen edge toward the height the
+  // OS passcode keypads sit at.
+  bottom: { alignItems: 'center', gap: Spacing.lg, paddingBottom: Spacing.xxxl },
   bioBtn: { alignSelf: 'center' },
 });

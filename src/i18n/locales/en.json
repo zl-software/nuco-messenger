@@ -213,6 +213,7 @@
     "statusRinging": "Ringing",
     "statusIncoming": "Incoming call",
     "statusConnecting": "Connecting",
+    "statusSecuring": "Encrypting call",
     "statusEncrypted": "End to end encrypted, via relay",
     "statusReconnecting": "Reconnecting",
     "statusEnded": "Call ended",

@@ -213,6 +213,7 @@
     "statusRinging": "Klingelt",
     "statusIncoming": "Eingehender Anruf",
     "statusConnecting": "Verbinden",
+    "statusSecuring": "Anruf wird verschlüsselt",
     "statusEncrypted": "Ende zu Ende verschlüsselt, über Relay",
     "statusReconnecting": "Verbindung wird wiederhergestellt",
     "statusEnded": "Anruf beendet",

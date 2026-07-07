@@ -126,14 +126,9 @@ export default function ChatsScreen() {
       <Text variant="display" color="text">
         {t('chats.title')}
       </Text>
-      <View style={styles.headerActions}>
-        <Pressable style={styles.iconBtn} onPress={() => router.push('/add-contact')} hitSlop={8}>
-          <QrIcon size={20} color={Colors.text} />
-        </Pressable>
-        <Pressable style={[styles.iconBtn, styles.composeBtn]} onPress={() => router.push('/add-contact')} hitSlop={8}>
-          <Plus size={20} color={Colors.accentInk} />
-        </Pressable>
-      </View>
+      <Pressable style={[styles.iconBtn, styles.composeBtn]} onPress={() => router.push('/add-contact')} hitSlop={8}>
+        <Plus size={20} color={Colors.accentInk} />
+      </Pressable>
     </View>
   );
 
@@ -240,7 +235,6 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.sm,
     paddingBottom: Spacing.lg,
   },
-  headerActions: { flexDirection: 'row', gap: Spacing.sm },
   iconBtn: {
     width: 40,
     height: 40,

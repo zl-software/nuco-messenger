@@ -253,6 +253,7 @@ export default function ContactDetailScreen() {
               label={t('contactDetail.message')}
               onPress={() => router.push({ pathname: '/chat/[id]', params: { id: contact.id } })}
               style={styles.ctaBtn}
+              glow={false}
             />
             {contact.blocked ? null : (
               <Button

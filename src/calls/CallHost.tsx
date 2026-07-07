@@ -5,8 +5,16 @@
 // before the lock lands.
 
 import { useEffect, useState } from 'react';
-import { Alert, BackHandler, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, BackHandler, Keyboard, Pressable, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Animated, {
+  Easing,
+  cancelAnimation,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMicrophonePermissions } from 'expo-camera';
 import { useTranslation } from 'react-i18next';
@@ -54,6 +62,27 @@ function endReasonKey(reason: CallUiEndReason): EndReasonKey {
   }
 }
 
+// A pulsing accent ring around the avatar while the encrypted transport is being
+// established (connecting and reconnecting). Pure UI; the state machine stays untouched.
+function SecuringRing({ active }: { active: boolean }) {
+  const progress = useSharedValue(0);
+  useEffect(() => {
+    if (active) {
+      progress.value = 0;
+      progress.value = withRepeat(withTiming(1, { duration: 1500, easing: Easing.out(Easing.quad) }), -1, false);
+    } else {
+      cancelAnimation(progress);
+      progress.value = 0;
+    }
+  }, [active, progress]);
+  const ringStyle = useAnimatedStyle(() => ({
+    opacity: 0.7 * (1 - progress.value),
+    transform: [{ scale: 1 + progress.value * 0.4 }],
+  }));
+  if (!active) return null;
+  return <Animated.View pointerEvents="none" style={[styles.securingRing, ringStyle]} />;
+}
+
 export function CallHost() {
   const { t } = useTranslation();
   const call = useCall();
@@ -67,6 +96,12 @@ export function CallHost() {
     if (!inCall) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
     return () => sub.remove();
+  }, [inCall]);
+
+  // The surface is a plain view, not a modal, so an open keyboard (e.g. the chat composer)
+  // would paint above it and cover the answer button. Drop it whenever a call comes up.
+  useEffect(() => {
+    if (inCall) Keyboard.dismiss();
   }, [inCall]);
 
   // A 1s tick drives the duration label while media is up.
@@ -127,7 +162,7 @@ export function CallHost() {
       case 'incoming-ringing':
         return t('call.statusIncoming');
       case 'connecting':
-        return t('call.statusConnecting');
+        return t('call.statusSecuring');
       case 'reconnecting':
         return t('call.statusReconnecting');
       case 'active':
@@ -144,7 +179,10 @@ export function CallHost() {
       <LinearGradient colors={[Colors.backgroundTop, Colors.background]} style={StyleSheet.absoluteFill} />
       <SafeAreaView style={styles.safe}>
         <View style={styles.hero}>
-          <Avatar name={call.contactName} size={88} />
+          <View style={styles.avatarWrap}>
+            <SecuringRing active={call.status === 'connecting' || call.status === 'reconnecting'} />
+            <Avatar name={call.contactName} size={88} />
+          </View>
           <Text variant="section" color="text" style={styles.name}>
             {call.contactName}
           </Text>
@@ -221,6 +259,15 @@ export function CallHost() {
 const styles = StyleSheet.create({
   safe: { flex: 1, alignItems: 'center', justifyContent: 'space-between' },
   hero: { alignItems: 'center', gap: Spacing.md, marginTop: '28%', paddingHorizontal: Spacing.xxl },
+  avatarWrap: { alignItems: 'center', justifyContent: 'center' },
+  securingRing: {
+    position: 'absolute',
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 2,
+    borderColor: Colors.accent,
+  },
   name: { textAlign: 'center' },
   actionRow: {
     flexDirection: 'row',

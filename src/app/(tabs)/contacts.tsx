@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { Avatar, ChevronRight, Pill, Plus, Screen, SearchField, Text, VerifiedShield } from '@/ui';
 import { listContacts, type Contact } from '@/db/repos/contacts';
 import { isDbOpen } from '@/db/client';
-import { Colors, Radius, Spacing, accentGlow } from '@/constants/theme';
+import { Colors, Radius, Spacing } from '@/constants/theme';
 
 export default function ContactsScreen() {
   const { t } = useTranslation();
@@ -159,7 +159,7 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: Spacing.xl,
-    bottom: Spacing.xxxl + Spacing.xs,
+    bottom: Spacing.xl,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
@@ -167,7 +167,6 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: Radius.cardSmall,
     backgroundColor: Colors.accent,
-    ...accentGlow,
   },
   fabLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 15, color: Colors.accentInk },
 });

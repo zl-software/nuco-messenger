@@ -16,9 +16,20 @@ export interface ButtonProps {
   icon?: React.ReactNode;
   style?: ViewStyle;
   testID?: string;
+  glow?: boolean;
 }
 
-export function Button({ label, onPress, variant = 'primary', disabled, loading, icon, style, testID }: ButtonProps) {
+export function Button({
+  label,
+  onPress,
+  variant = 'primary',
+  disabled,
+  loading,
+  icon,
+  style,
+  testID,
+  glow = true,
+}: ButtonProps) {
   const isDisabled = disabled || loading;
   return (
     <Pressable
@@ -28,7 +39,7 @@ export function Button({ label, onPress, variant = 'primary', disabled, loading,
       style={({ pressed }) => [
         styles.base,
         VARIANT_STYLES[variant],
-        variant === 'primary' ? accentGlow : null,
+        variant === 'primary' && glow ? accentGlow : null,
         isDisabled ? styles.disabled : null,
         pressed ? styles.pressed : null,
         style,
