@@ -27,7 +27,13 @@ npm run typecheck
 npm run crypto:selftest   # full crypto core on Node, native AND noble providers
 npm run i18n:check        # en/de key parity
 npm run calls:check       # call state machine on Node with fake engines
+npm run protocol:check    # vendor/protocol matches ../protocol
 ```
+
+`@nuco/protocol` resolves to the committed `vendor/protocol` copy (package.json plus built
+dist, synced by `npm run protocol:sync`), because EAS cloud builds upload only this repo and
+a `file:../protocol` dependency dangles on the build worker. Edit the contract only in the
+sibling `protocol/` repo, then sync and commit the vendor copy.
 
 ## On-device gotchas (do not regress)
 
