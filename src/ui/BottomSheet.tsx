@@ -61,11 +61,13 @@ export function BottomSheet({ visible, title, onClose, children }: BottomSheetPr
       <Animated.View style={[styles.backdrop, { opacity: backdrop }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
       </Animated.View>
-      {/* The keyboard would cover a bottom anchored sheet: the avoiding view pads the modal
-          from below so a sheet with an input rides above it. box-none keeps backdrop taps
-          reaching the scrim Pressable. */}
+      {/* The keyboard would cover a bottom anchored sheet: the avoiding view pads itself
+          from below so the sheet rides above it. The sheet must be a LAYOUT child pushed
+          down by flex-end, not position absolute bottom 0: padding never moves an
+          absolutely anchored child, which left the sheet (and its buttons) pinned under
+          the keyboard. box-none keeps backdrop taps reaching the scrim Pressable. */}
       <KeyboardAvoidingView
-        style={StyleSheet.absoluteFill}
+        style={styles.avoider}
         pointerEvents="box-none"
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
@@ -86,11 +88,8 @@ export function BottomSheet({ visible, title, onClose, children }: BottomSheetPr
 
 const styles = StyleSheet.create({
   backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: Overlay.scrim },
+  avoider: { flex: 1, justifyContent: 'flex-end' },
   sheet: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
     backgroundColor: Colors.surface1,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
