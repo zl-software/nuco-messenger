@@ -169,10 +169,12 @@ export class RelayClient {
   // against a relay that just dropped fails fast instead of wedging the call screen.
   // Rejects with CALLS_UNAVAILABLE when the relay has no TURN configured or predates the
   // frame (a pre 1.3 relay would answer with a rid-less MALFORMED_MESSAGE and the request
-  // would only die by timeout).
+  // would only die by timeout). The frame exists since 1.3 and in every 2.x, and the relay
+  // rejects mismatched majors at connect, so only a 1.x relay below minor 3 lacks it:
+  // gate on the pair, never on the minor alone (a fresh major resets the minor to 0).
   async turnCredentials(timeoutMs = 8000): Promise<TurnCredentials> {
     await this.ensureReady(timeoutMs);
-    if (this.serverVersion && this.serverVersion.minor < 3) {
+    if (this.serverVersion && this.serverVersion.major === 1 && this.serverVersion.minor < 3) {
       throw new Error(ErrorCode.CallsUnavailable);
     }
     const reply = await this.request((rid) => ({ type: 'turnCredentials', rid }));
