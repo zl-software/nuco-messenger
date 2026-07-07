@@ -27,6 +27,14 @@ export async function migrate(db: DB): Promise<void> {
     if (current < 3 && !(await columnExists(db, 'messages', 'kind'))) {
       await db.execute("ALTER TABLE messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'");
     }
+    // v3 -> v4: mutual verification. Both timestamps set = conversation unlocked;
+    // card_spk_pub is the peer's signed prekey public key from their scanned card,
+    // needed to recompute the cardHash proof at confirm time.
+    if (current < 4 && !(await columnExists(db, 'contacts', 'local_confirmed_at'))) {
+      await db.execute('ALTER TABLE contacts ADD COLUMN local_confirmed_at INTEGER');
+      await db.execute('ALTER TABLE contacts ADD COLUMN peer_confirmed_at INTEGER');
+      await db.execute('ALTER TABLE contacts ADD COLUMN card_spk_pub TEXT');
+    }
     await db.execute(
       'INSERT INTO meta(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
       ['schema_version', String(SCHEMA_VERSION)],

@@ -1,5 +1,4 @@
 import type { ProtocolVersion } from './version.js';
-import type { PreKeyUpload, PreKeyBundle } from './prekeys.js';
 import type { ErrorCodeValue } from './errors.js';
 export type PushKind = 'apns' | 'unifiedpush' | 'none';
 export interface PushRegistration {
@@ -27,25 +26,9 @@ export interface AuthenticateMsg {
 export interface RegisterMsg {
     readonly type: 'register';
     readonly rid: string;
-    readonly identityKey: string;
     readonly authKey: string;
-    readonly registrationId: number;
     readonly deviceId: number;
     readonly push: PushRegistration;
-}
-export interface PublishPreKeysMsg {
-    readonly type: 'publishPreKeys';
-    readonly rid: string;
-    readonly preKeys: PreKeyUpload;
-}
-export interface FetchPreKeyBundleMsg {
-    readonly type: 'fetchPreKeyBundle';
-    readonly rid: string;
-    readonly handle: string;
-}
-export interface PreKeyCountMsg {
-    readonly type: 'preKeyCount';
-    readonly rid: string;
 }
 export interface SendMsg {
     readonly type: 'send';
@@ -69,7 +52,7 @@ export interface TurnCredentialsMsg {
     readonly type: 'turnCredentials';
     readonly rid: string;
 }
-export type ClientMessage = ConnectMsg | AuthenticateMsg | RegisterMsg | PublishPreKeysMsg | FetchPreKeyBundleMsg | PreKeyCountMsg | SendMsg | AckMsg | PingMsg | DeregisterMsg | TurnCredentialsMsg;
+export type ClientMessage = ConnectMsg | AuthenticateMsg | RegisterMsg | SendMsg | AckMsg | PingMsg | DeregisterMsg | TurnCredentialsMsg;
 export type ClientMessageType = ClientMessage['type'];
 export interface ConnectedMsg {
     readonly type: 'connected';
@@ -83,17 +66,6 @@ export interface OkMsg {
     readonly type: 'ok';
     readonly rid: string;
     readonly data?: Record<string, unknown>;
-}
-export interface PreKeyBundleMsg {
-    readonly type: 'preKeyBundle';
-    readonly rid: string;
-    readonly bundle: PreKeyBundle;
-}
-export interface PreKeyCountResultMsg {
-    readonly type: 'preKeyCountResult';
-    readonly rid: string;
-    readonly hasSignedPreKey: boolean;
-    readonly oneTimeCount: number;
 }
 export interface TurnCredentialsResultMsg {
     readonly type: 'turnCredentialsResult';
@@ -118,7 +90,7 @@ export interface PongMsg {
     readonly type: 'pong';
     readonly ts: number;
 }
-export type ServerMessage = ConnectedMsg | AuthenticatedMsg | OkMsg | PreKeyBundleMsg | PreKeyCountResultMsg | TurnCredentialsResultMsg | DeliverMsg | ErrorMsg | PongMsg;
+export type ServerMessage = ConnectedMsg | AuthenticatedMsg | OkMsg | TurnCredentialsResultMsg | DeliverMsg | ErrorMsg | PongMsg;
 export type ServerMessageType = ServerMessage['type'];
 export declare const CLIENT_MESSAGE_TYPES: ClientMessageType[];
 export declare const SERVER_MESSAGE_TYPES: ServerMessageType[];

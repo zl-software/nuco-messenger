@@ -11,13 +11,13 @@ import { type ContactCard } from '@nuco/protocol';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 
 type Mode = 'show' | 'scan';
-type ScanError = 'invalid' | 'notNuco' | 'offline' | 'mismatch' | 'self' | null;
+// Scanning is fully offline since protocol 2.0 (the card carries the whole X3DH bundle),
+// so the offline and mismatch outcomes no longer exist.
+type ScanError = 'invalid' | 'notNuco' | 'self' | null;
 
 const SCAN_ERROR_COPY = {
   invalid: { tone: 'danger', title: 'addContact.invalidTitle', body: 'addContact.invalidBody', cta: 'addContact.tryAgain' },
   notNuco: { tone: 'warning', title: 'addContact.notNucoTitle', body: 'addContact.notNucoBody', cta: 'addContact.scanNuco' },
-  offline: { tone: 'warning', title: 'addContact.offlineTitle', body: 'addContact.offlineBody', cta: 'addContact.tryAgain' },
-  mismatch: { tone: 'danger', title: 'addContact.mismatchTitle', body: 'addContact.mismatchBody', cta: 'addContact.tryAgain' },
   self: { tone: 'warning', title: 'addContact.selfTitle', body: 'addContact.selfBody', cta: 'addContact.tryAgain' },
 } as const;
 

@@ -9,7 +9,7 @@
 import { hkdf } from '@noble/hashes/hkdf.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 
-import { base64ToBytes, utf8Encode } from './bytes';
+import { base64ToBytes, compareBytes, utf8Encode } from './bytes';
 
 export interface SasEmoji {
   emoji: string;
@@ -85,14 +85,6 @@ export const SAS_EMOJI: readonly SasEmoji[] = [
 
 const SAS_LENGTH = 6;
 const SAS_INFO = utf8Encode('NUCO-SAS-v1');
-
-function compareBytes(a: Uint8Array, b: Uint8Array): number {
-  const len = Math.min(a.length, b.length);
-  for (let i = 0; i < len; i++) {
-    if (a[i]! !== b[i]!) return a[i]! - b[i]!;
-  }
-  return a.length - b.length;
-}
 
 export function computeEmojiSas(identityKeyA_B64: string, identityKeyB_B64: string): SasEmoji[] {
   const a = base64ToBytes(identityKeyA_B64);

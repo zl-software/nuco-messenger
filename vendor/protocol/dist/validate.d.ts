@@ -6,7 +6,6 @@ export declare const LIMITS: {
     readonly keyB64MaxLen: 2048;
     readonly signatureB64MaxLen: 2048;
     readonly ciphertextB64MaxLen: 262144;
-    readonly oneTimeBatchMax: 200;
     readonly ridMaxLen: 128;
     readonly idMaxLen: 128;
     readonly apnsTopicMaxLen: 256;

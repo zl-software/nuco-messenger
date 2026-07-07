@@ -4,9 +4,11 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { Button, Card, ChevronLeft, QrCard, QrIcon, Screen, Text } from '@/ui';
-import { getContact, type Contact } from '@/db/repos/contacts';
+import { getContact, isMutuallyVerified, type Contact } from '@/db/repos/contacts';
 import { getSignal } from '@/services/account';
-import { buildContactCard, markVerified } from '@/services/contacts';
+import { buildContactCard } from '@/services/contacts';
+import { subscribeConversationsChanged } from '@/services/data-events';
+import { confirmVerification } from '@/services/verification';
 import { useSession } from '@/state/session';
 import { Colors, Overlay, Spacing } from '@/constants/theme';
 
@@ -49,6 +51,16 @@ export default function VerifyScreen() {
     };
   }, [id, account]);
 
+  // Refresh when the verification state changes underneath: the peer's confirm arriving
+  // flips this screen from waiting to verified without any local interaction.
+  useEffect(() => {
+    return subscribeConversationsChanged(() => {
+      void getContact(id).then((c) => {
+        if (c) setContact(c);
+      });
+    });
+  }, [id]);
+
   // Start the confirm countdown once the codes are on screen.
   useEffect(() => {
     if (!strings) return;
@@ -65,12 +77,17 @@ export default function VerifyScreen() {
     return () => clearInterval(interval);
   }, [strings]);
 
-  async function onMarkVerified() {
+  async function onConfirm() {
     if (!contact || !strings) return;
-    await markVerified(contact.id, strings.safetyNumber);
+    await confirmVerification(contact);
+    const fresh = await getContact(contact.id);
+    if (fresh) setContact(fresh);
+  }
+
+  function onDone() {
     // Reached from a scan: drop the scanner and this screen, land on the contact, so going back
     // returns to whatever preceded the scanner. Reached from the contact screen: just pop back.
-    if (from === 'scan') {
+    if (from === 'scan' && contact) {
       router.replace({ pathname: '/contact/[id]', params: { id: contact.id } });
     } else {
       router.back();
@@ -79,6 +96,8 @@ export default function VerifyScreen() {
 
   const name = contact?.displayName ?? '';
   const canVerify = strings != null && countdown === 0;
+  const localConfirmed = contact?.localConfirmedAt != null;
+  const mutual = contact != null && isMutuallyVerified(contact);
 
   return (
     <Screen edges={['top', 'bottom']} contentStyle={styles.content}>
@@ -125,38 +144,71 @@ export default function VerifyScreen() {
           </View>
         )}
 
-        <Text variant="bodySecondary" color="textSecondary" style={styles.mutualHint}>
-          {t('verification.mutualHint', { name })}
-        </Text>
-
-        <Button
-          label={showCode ? t('verification.hideMyCode') : t('verification.showMyCode')}
-          icon={<QrIcon size={18} color={Colors.accentInk} />}
-          onPress={() => setShowCode((s) => !s)}
-          style={styles.primary}
-        />
-        <Button
-          label={
-            strings && countdown > 0
-              ? t('verification.markVerifiedCountdown', { seconds: countdown })
-              : t('verification.markVerified')
-          }
-          variant="secondary"
-          onPress={onMarkVerified}
-          disabled={!canVerify}
-        />
-
-        {showCode && qrValue ? (
-          // Below the buttons so both phones can be held together: one shows this code while
-          // the other scans, with the safety number still on screen. onLayout fires when the
-          // card mounts (after layout), so the scroll sees the final content height.
-          <View style={styles.ownCode} onLayout={() => scrollRef.current?.scrollToEnd({ animated: true })}>
-            <QrCard value={qrValue} />
-            <Text variant="monoCaption" color="textSecondary">
-              {'@' + (account?.handle ?? '')}
+        {mutual ? (
+          <>
+            <Card tone="accent" style={styles.stateCard}>
+              <Text variant="title">{t('verification.verifiedTitle')}</Text>
+              <Text variant="bodySecondary" color="textSecondary" style={styles.stateBody}>
+                {t('verification.verifiedBody', { name })}
+              </Text>
+            </Card>
+            <Button label={t('common.done')} onPress={onDone} style={styles.primary} />
+          </>
+        ) : localConfirmed ? (
+          // Confirmed here, waiting on the peer: keep the own code on screen so they can
+          // scan back right now. The conversation stays locked until their confirm lands.
+          <>
+            <Card style={styles.stateCard}>
+              <Text variant="title">{t('verification.waitingTitle', { name })}</Text>
+              <Text variant="bodySecondary" color="textSecondary" style={styles.stateBody}>
+                {t('verification.waitingBody', { name })}
+              </Text>
+            </Card>
+            {qrValue ? (
+              <View style={styles.ownCode} onLayout={() => scrollRef.current?.scrollToEnd({ animated: true })}>
+                <QrCard value={qrValue} />
+                <Text variant="monoCaption" color="textSecondary">
+                  {'@' + (account?.handle ?? '')}
+                </Text>
+              </View>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <Text variant="bodySecondary" color="textSecondary" style={styles.mutualHint}>
+              {t('verification.mutualHint', { name })}
             </Text>
-          </View>
-        ) : null}
+
+            <Button
+              label={showCode ? t('verification.hideMyCode') : t('verification.showMyCode')}
+              icon={<QrIcon size={18} color={Colors.accentInk} />}
+              onPress={() => setShowCode((s) => !s)}
+              style={styles.primary}
+            />
+            <Button
+              label={
+                strings && countdown > 0
+                  ? t('verification.markVerifiedCountdown', { seconds: countdown })
+                  : t('verification.markVerified')
+              }
+              variant="secondary"
+              onPress={onConfirm}
+              disabled={!canVerify}
+            />
+
+            {showCode && qrValue ? (
+              // Below the buttons so both phones can be held together: one shows this code while
+              // the other scans, with the safety number still on screen. onLayout fires when the
+              // card mounts (after layout), so the scroll sees the final content height.
+              <View style={styles.ownCode} onLayout={() => scrollRef.current?.scrollToEnd({ animated: true })}>
+                <QrCard value={qrValue} />
+                <Text variant="monoCaption" color="textSecondary">
+                  {'@' + (account?.handle ?? '')}
+                </Text>
+              </View>
+            ) : null}
+          </>
+        )}
       </ScrollView>
     </Screen>
   );
@@ -195,4 +247,6 @@ const styles = StyleSheet.create({
   mutualHint: { textAlign: 'center', marginBottom: Spacing.md },
   primary: { marginTop: Spacing.xs, marginBottom: Spacing.md },
   ownCode: { alignItems: 'center', gap: Spacing.md, marginTop: Spacing.xl },
+  stateCard: { alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.lg },
+  stateBody: { textAlign: 'center' },
 });

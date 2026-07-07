@@ -15,7 +15,6 @@ import {
 import {
   pad,
   unpad,
-  type PreKeyBundle,
   type CipherMessageType,
 } from '@nuco/protocol';
 
@@ -41,6 +40,13 @@ export interface SealedMessage {
   messageType: CipherMessageType;
 }
 
+// Everything X3DH needs about the peer, straight from their scanned contact card.
+export interface SessionBootstrap {
+  identityKey: string; // base64
+  registrationId: number;
+  signedPreKey: { keyId: number; publicKey: string; signature: string };
+}
+
 export interface VerificationStrings {
   safetyNumber: string;
   safetyNumberRows: string[];
@@ -60,8 +66,10 @@ export class NucoSignal {
     return new SessionCipher(this.store, this.address(handle)).hasOpenSession();
   }
 
-  // X3DH: establish a session toward a peer from their fetched prekey bundle.
-  async startSession(handle: string, bundle: PreKeyBundle): Promise<void> {
+  // X3DH: establish a session toward a peer from their scanned contact card. processPreKey
+  // validates the signed prekey signature against the identity key, so a forged card fails
+  // here. No one time prekeys exist since protocol 2.0.
+  async startSession(handle: string, bundle: SessionBootstrap): Promise<void> {
     const device: DeviceType = {
       identityKey: base64ToAb(bundle.identityKey),
       registrationId: bundle.registrationId,
@@ -70,9 +78,6 @@ export class NucoSignal {
         publicKey: base64ToAb(bundle.signedPreKey.publicKey),
         signature: base64ToAb(bundle.signedPreKey.signature),
       },
-      ...(bundle.oneTimePreKey
-        ? { preKey: { keyId: bundle.oneTimePreKey.keyId, publicKey: base64ToAb(bundle.oneTimePreKey.publicKey) } }
-        : {}),
     };
     await new SessionBuilder(this.store, this.address(handle)).processPreKey(device);
   }

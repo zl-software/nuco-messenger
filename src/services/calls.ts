@@ -20,8 +20,8 @@ import { setAutoLockDeferral, setPreLockHook } from '@/lock/lock-controller';
 import { useCall } from '@/state/call';
 import { emitConversationsChanged } from './data-events';
 import { expiryFor, sendContent, setCallSignalHandler } from './messaging';
-import { getSignal } from './account';
 import { getRelay } from './relay';
+import { getContactByHandle, isMutuallyVerified } from '@/db/repos/contacts';
 
 let controller: CallController | null = null;
 
@@ -65,7 +65,13 @@ export function initCallService(): void {
       if (!relay) throw new Error('relay not started');
       return relay.turnCredentials();
     },
-    hasSession: (handle) => getSignal().hasSession(handle),
+    // Strictly stronger than a session check: a mutually verified contact always has a
+    // session, and calling anyone else is gated exactly like messaging. The controller's
+    // existing 'no-session' availability path carries the alert.
+    hasSession: async (handle) => {
+      const contact = await getContactByHandle(handle);
+      return contact != null && isMutuallyVerified(contact);
+    },
     writeCallRow,
     onState: (snap) => useCall.getState().set(snap),
     newId: () => Crypto.randomUUID(),

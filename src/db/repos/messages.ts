@@ -20,7 +20,8 @@ export type MessageKind =
   | 'call/outgoing'
   | 'call/incoming'
   | 'call/missed'
-  | 'call/declined';
+  | 'call/declined'
+  | 'verified';
 
 export interface Message {
   id: string;

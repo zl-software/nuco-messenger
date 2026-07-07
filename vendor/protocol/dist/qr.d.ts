@@ -1,8 +1,11 @@
-export declare const CONTACT_CARD_VERSION = 1;
+import type { SignedPreKeyPublic } from './prekeys.js';
+export declare const CONTACT_CARD_VERSION = 2;
 export interface ContactCard {
     readonly v: number;
     readonly handle: string;
     readonly identityKey: string;
+    readonly registrationId: number;
+    readonly signedPreKey: SignedPreKeyPublic;
     readonly fingerprint: string;
     readonly displayName: string;
 }

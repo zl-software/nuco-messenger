@@ -3,7 +3,7 @@
 // (sessions, prekeys, identity key pair) lives here too, because secure-store values are
 // size limited and the Signal store can exceed that limit.
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const SCHEMA: readonly string[] = [
   `CREATE TABLE IF NOT EXISTS meta (
@@ -18,17 +18,20 @@ export const SCHEMA: readonly string[] = [
   )`,
 
   `CREATE TABLE IF NOT EXISTS contacts (
-    id              TEXT PRIMARY KEY,
-    handle          TEXT UNIQUE,
-    display_name    TEXT NOT NULL,
-    identity_pubkey TEXT NOT NULL,
-    fingerprint     TEXT,
-    safety_number   TEXT,
-    status          TEXT NOT NULL DEFAULT 'connected',
-    verified_at     INTEGER,
-    blocked         INTEGER NOT NULL DEFAULT 0,
-    muted           INTEGER NOT NULL DEFAULT 0,
-    created_at      INTEGER NOT NULL
+    id                 TEXT PRIMARY KEY,
+    handle             TEXT UNIQUE,
+    display_name       TEXT NOT NULL,
+    identity_pubkey    TEXT NOT NULL,
+    fingerprint        TEXT,
+    safety_number      TEXT,
+    status             TEXT NOT NULL DEFAULT 'connected',
+    verified_at        INTEGER,
+    local_confirmed_at INTEGER,
+    peer_confirmed_at  INTEGER,
+    card_spk_pub       TEXT,
+    blocked            INTEGER NOT NULL DEFAULT 0,
+    muted              INTEGER NOT NULL DEFAULT 0,
+    created_at         INTEGER NOT NULL
   )`,
 
   `CREATE TABLE IF NOT EXISTS conversations (

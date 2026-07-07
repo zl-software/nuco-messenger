@@ -2,11 +2,12 @@
 // onboarding): loads the account, wires inbound delivery to the messaging service, and
 // starts the relay connection.
 
-import { loadAccount, registerParamsFor, generatePreKeyUpload, type Account } from './account';
+import { loadAccount, registerParamsFor, type Account } from './account';
 import { startRelay, stopRelay, setOnDeliver, setOnRelayStatus, getRelay } from './relay';
 import { initCallService } from './calls';
 import { emitConversationsChanged } from './data-events';
 import { receiveEnvelope, resendPendingOutbound } from './messaging';
+import { initVerificationService, resendPendingConfirms } from './verification';
 import { startExpirySweeper } from './expiry';
 import { resolveServerUrl } from './server';
 import { loadPrefs } from './prefs';
@@ -15,44 +16,27 @@ import { sweepExpired } from '@/db/repos/messages';
 import { registerPush } from '@/transport/push';
 
 function wireRelayCallbacks(): void {
-  // The call controller must be registered before the relay can deliver the first
-  // envelope, or an early call signal would be swallowed by the default handler.
+  // The call controller and the verification handlers must be registered before the relay
+  // can deliver the first envelope, or an early signal would hit the default no-op handler.
   initCallService();
-  setOnRelayStatus((status) => useSession.getState().setRelayStatus(status));
+  initVerificationService();
+  setOnRelayStatus((status) => {
+    useSession.getState().setRelayStatus(status);
+    // Re-send unanswered verification confirms on every connect (idempotent), so a lost
+    // or TTL expired confirm never leaves a pair stuck pending.
+    if (status === 'connected') void resendPendingConfirms();
+  });
   setOnDeliver(async (from, envelope) => {
     await receiveEnvelope(from, envelope);
   });
 }
 
-// Self heal prekeys: if the relay we just connected to holds no bundle for us (a self hosted or
-// reset relay that we did not onboard against), publish a fresh batch so others can start a
-// session with us. Best effort and runs in the background.
-async function ensurePreKeysPublished(): Promise<void> {
-  const relay = getRelay();
-  if (!relay) return;
-  try {
-    if (!(await relay.waitUntilReady(8000))) return;
-    const count = await relay.preKeyCount();
-    if (count.hasSignedPreKey && count.oneTimeCount > 0) return;
-    const upload = await generatePreKeyUpload();
-    if (upload) await relay.publishPreKeys(upload);
-  } catch {
-    // A later connect retries.
-  }
-}
-
-// First run, right after onboarding provisioning. Registers the device and publishes prekeys.
-export async function goOnlineFirstRun(account: Account, upload: import('@nuco/protocol').PreKeyUpload): Promise<void> {
+// First run, right after onboarding provisioning. Registers the device on connect.
+export async function goOnlineFirstRun(account: Account): Promise<void> {
   useSession.getState().setAccount(account);
   const prefs = await loadPrefs();
   wireRelayCallbacks();
-  const client = startRelay(resolveServerUrl(prefs), account, registerParamsFor(account, { kind: 'none' }));
-  // Publish prekeys once the socket is ready, but never block first run on a relay that may be
-  // unreachable: ensureReady resolves when this connection (or a later reconnect) comes up.
-  void client
-    .ensureReady()
-    .then(() => client.publishPreKeys(upload))
-    .catch(() => undefined);
+  startRelay(resolveServerUrl(prefs), account, registerParamsFor(account, { kind: 'none' }));
   startExpirySweeper();
   void registerPush();
 }
@@ -67,7 +51,6 @@ export async function bringOnline(): Promise<void> {
   // Register on connect: a self hosted relay (or one whose store was reset) will not know this
   // handle, and authentication fails without a registration, leaving the socket disconnected.
   startRelay(resolveServerUrl(prefs), account, registerParamsFor(account, { kind: 'none' }));
-  void ensurePreKeysPublished();
   if ((await sweepExpired(Date.now())) > 0) emitConversationsChanged();
   startExpirySweeper();
   // Re-send anything left 'sending' when the app was last killed (the outbound queue is memory
@@ -86,7 +69,6 @@ export async function reconnectRelay(): Promise<void> {
   const prefs = await loadPrefs();
   wireRelayCallbacks();
   startRelay(resolveServerUrl(prefs), account, registerParamsFor(account, { kind: 'none' }));
-  void ensurePreKeysPublished();
 }
 
 export function relayConnected(): boolean {

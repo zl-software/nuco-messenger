@@ -24,7 +24,7 @@ import { MESSAGE_BODY_MAX_LEN } from '@nuco/protocol';
 
 import { Avatar, Button, Card, ChevronLeft, Phone, Screen, SendArrow, Text, VerifiedShield } from '@/ui';
 import { Colors, Fonts, Overlay, Radius, Spacing } from '@/constants/theme';
-import { getContact, type Contact } from '@/db/repos/contacts';
+import { getContact, isMutuallyVerified, type Contact } from '@/db/repos/contacts';
 import { getConversationByContact, type Conversation } from '@/db/repos/conversations';
 import { listMessages, type Message } from '@/db/repos/messages';
 import { isDbOpen } from '@/db/client';
@@ -195,8 +195,8 @@ export default function ConversationScreen() {
     return <Screen contentStyle={styles.screen}>{null}</Screen>;
   }
 
-  const verified = contact.status === 'verified';
-  const subtitle = verified ? t('conversation.verified') : t('conversation.connecting');
+  const verified = isMutuallyVerified(contact);
+  const subtitle = verified ? t('conversation.verified') : t('conversation.pendingVerification');
   const retention = conversation?.retentionSeconds ?? 86400;
 
   return (
@@ -227,8 +227,8 @@ export default function ConversationScreen() {
           onPress={() =>
             void startCall({ id: contact.id, handle: contact.handle, displayName: contact.displayName, blocked: contact.blocked })
           }
-          disabled={contact.blocked || callStatus !== 'idle'}
-          style={[styles.callBtn, contact.blocked || callStatus !== 'idle' ? styles.callBtnDisabled : null]}
+          disabled={!verified || contact.blocked || callStatus !== 'idle'}
+          style={[styles.callBtn, !verified || contact.blocked || callStatus !== 'idle' ? styles.callBtnDisabled : null]}
           hitSlop={8}
         >
           <Phone size={20} color={Colors.text} />
@@ -347,31 +347,48 @@ export default function ConversationScreen() {
           </ScrollView>
         )}
 
-        <View
-          style={[
-            styles.composer,
-            { paddingBottom: keyboardVisible ? Spacing.md : Math.max(insets.bottom, Spacing.md) },
-          ]}
-        >
-          <View style={styles.inputWrap}>
-            <TextInput
-              value={draft}
-              onChangeText={setDraft}
-              placeholder={t('conversation.composerPlaceholder')}
-              placeholderTextColor={Colors.textSecondary}
-              style={styles.input}
-              maxLength={MESSAGE_BODY_MAX_LEN}
-              multiline
-            />
-          </View>
-          <Pressable
-            onPress={onSend}
-            disabled={!draft.trim() || sending}
-            style={[styles.sendBtn, !draft.trim() || sending ? styles.sendBtnDisabled : null]}
+        {verified ? (
+          <View
+            style={[
+              styles.composer,
+              { paddingBottom: keyboardVisible ? Spacing.md : Math.max(insets.bottom, Spacing.md) },
+            ]}
           >
-            <SendArrow size={22} color={Colors.accentInk} />
-          </Pressable>
-        </View>
+            <View style={styles.inputWrap}>
+              <TextInput
+                value={draft}
+                onChangeText={setDraft}
+                placeholder={t('conversation.composerPlaceholder')}
+                placeholderTextColor={Colors.textSecondary}
+                style={styles.input}
+                maxLength={MESSAGE_BODY_MAX_LEN}
+                multiline
+              />
+            </View>
+            <Pressable
+              onPress={onSend}
+              disabled={!draft.trim() || sending}
+              style={[styles.sendBtn, !draft.trim() || sending ? styles.sendBtnDisabled : null]}
+            >
+              <SendArrow size={22} color={Colors.accentInk} />
+            </Pressable>
+          </View>
+        ) : (
+          // The gate: no composer until mutual verification. The send path enforces it too;
+          // this panel is the honest UI for it.
+          <Card style={{ ...styles.pendingPanel, marginBottom: Math.max(insets.bottom, Spacing.md) }}>
+            <Text variant="rowTitle" color="text">
+              {t('conversation.pendingTitle')}
+            </Text>
+            <Text variant="bodySecondary" color="textSecondary" style={styles.pendingBody}>
+              {t('conversation.pendingBody', { name: contact.displayName })}
+            </Text>
+            <Button
+              label={t('conversation.verifyCta')}
+              onPress={() => router.push({ pathname: '/verify/[id]', params: { id: contact.id } })}
+            />
+          </Card>
+        )}
       </KeyboardAvoidingView>
     </Screen>
   );
@@ -406,6 +423,8 @@ const styles = StyleSheet.create({
   },
   requestActions: { flexDirection: 'row', gap: Spacing.sm },
   requestBtn: { flex: 1 },
+  pendingPanel: { gap: Spacing.sm, marginTop: Spacing.sm },
+  pendingBody: { marginBottom: Spacing.xs },
   systemRow: { alignItems: 'center', paddingVertical: Spacing.xs, paddingHorizontal: Spacing.lg },
   systemText: { textAlign: 'center' },
   listGrow: { flexGrow: 1 },

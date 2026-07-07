@@ -21,6 +21,9 @@ export type MessageContent = {
     readonly t: 'call/end';
     readonly callId: string;
     readonly reason: CallEndReason | (string & {});
+} | {
+    readonly t: 'verify/confirm';
+    readonly cardHash: string;
 };
 export type MessageContentType = MessageContent['t'];
 export declare const MESSAGE_BODY_MAX_LEN = 16384;
@@ -30,6 +33,7 @@ export declare const CALL_SDP_MAX_LEN = 8192;
 export declare const CALL_END_REASON_MAX_LEN = 32;
 export declare const CALL_RING_TIMEOUT_SECONDS = 45;
 export declare const CALL_OFFER_STALE_SECONDS = 120;
+export declare const CARD_HASH_LEN = 44;
 export declare const CALL_END_REASONS: readonly ["hangup", "decline", "busy", "timeout", "error"];
 export type CallEndReason = (typeof CALL_END_REASONS)[number];
 export declare const MESSAGE_CONTENT_TYPES: MessageContentType[];

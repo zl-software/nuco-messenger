@@ -117,7 +117,11 @@
     "blockedNotice": "You blocked {{name}}",
     "blockedBody": "They cannot message you, and you will not see new messages, until you unblock.",
     "unblock": "Unblock {{name}}",
-    "queued": "Queued, will send when online"
+    "queued": "Queued, will send when online",
+    "pendingVerification": "verification pending",
+    "verifyCta": "Verify each other",
+    "pendingTitle": "Verification pending",
+    "pendingBody": "You can chat once you and {{name}} have scanned each other and confirmed the emojis match."
   },
   "retention": {
     "title": "Disappearing messages",
@@ -197,7 +201,7 @@
     "unavailableTitle": "Calls unavailable",
     "errorNoTurn": "This server has no call relay configured, so calls cannot connect.",
     "errorOffline": "You are offline. Connect to your server to call.",
-    "errorNoSession": "Calling needs an active encrypted session with {{name}}. Send a message first.",
+    "errorNoSession": "Calling needs mutual verification with {{name}}. Verify each other in person first.",
     "errorBlocked": "You blocked {{name}}. Unblock them to call.",
     "errorBusy": "You are already in a call.",
     "errorMic": "The microphone is not available.",
@@ -244,10 +248,6 @@
     "notNucoTitle": "That is not a Nuco code",
     "notNucoBody": "This QR is a valid code, just not a Nuco identity.",
     "scanNuco": "Scan a Nuco code",
-    "offlineTitle": "Cannot reach the server",
-    "offlineBody": "Adding a contact needs a connection to fetch their keys. Connect to your server and try again.",
-    "mismatchTitle": "Keys do not match",
-    "mismatchBody": "The key the server returned does not match their code. Do not trust this contact, and try again.",
     "selfTitle": "That is your own code",
     "selfBody": "You cannot add yourself as a contact. Scan a friend's code instead.",
     "alreadyAddedTitle": "Already in your contacts",
@@ -269,6 +269,10 @@
     "markVerified": "They match, mark verified",
     "markVerifiedCountdown": "They match, mark verified ({{seconds}})",
     "emojiCompare": "Or compare these emoji",
+    "waitingTitle": "Waiting for {{name}}",
+    "waitingBody": "Have {{name}} scan your code and confirm the emojis. Messaging unlocks once both of you have confirmed.",
+    "verifiedTitle": "Verified",
+    "verifiedBody": "You and {{name}} confirmed each other. Messaging is unlocked.",
     "reVerify": "Re-verify safety number",
     "reVerifiedTitle": "Identity confirmed",
     "reVerifiedBody": "{{name}}'s safety number matches. This conversation is still end to end verified.",
@@ -284,12 +288,16 @@
     "message": "Message",
     "mute": "Mute",
     "verifiedInPerson": "Verified in person, {{date}}",
+    "waitingForPeer": "Waiting for {{name}} to confirm you back.",
     "disappearingMessages": "Disappearing messages",
     "muteNotifications": "Mute notifications",
     "blockContact": "Block contact",
     "deleteContact": "Delete contact",
     "deleteConfirmTitle": "Delete this contact?",
     "deleteConfirmBody": "This removes {{name}}, your conversation, and all its messages from this device. It cannot be undone."
+  },
+  "system": {
+    "verified": "You verified each other. Messages are unlocked."
   },
   "settings": {
     "title": "Settings",

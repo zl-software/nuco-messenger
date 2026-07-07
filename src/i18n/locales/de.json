@@ -117,7 +117,11 @@
     "blockedNotice": "Du hast {{name}} blockiert",
     "blockedBody": "Die Person kann dir keine Nachrichten schicken, und du siehst keine neuen Nachrichten, bis du die Blockierung aufhebst.",
     "unblock": "{{name}} entsperren",
-    "queued": "In der Warteschlange, wird gesendet, wenn du online bist"
+    "queued": "In der Warteschlange, wird gesendet, wenn du online bist",
+    "pendingVerification": "Verifizierung ausstehend",
+    "verifyCta": "Gegenseitig verifizieren",
+    "pendingTitle": "Verifizierung ausstehend",
+    "pendingBody": "Ihr könnt chatten, sobald du und {{name}} euch gegenseitig gescannt und bestätigt habt, dass die Emojis übereinstimmen."
   },
   "retention": {
     "title": "Verschwindende Nachrichten",
@@ -197,7 +201,7 @@
     "unavailableTitle": "Anrufe nicht verfügbar",
     "errorNoTurn": "Für diesen Server ist kein Anruf-Relay konfiguriert, daher können Anrufe nicht verbunden werden.",
     "errorOffline": "Du bist offline. Verbinde dich mit deinem Server, um anzurufen.",
-    "errorNoSession": "Anrufe brauchen eine aktive verschlüsselte Sitzung mit {{name}}. Sende zuerst eine Nachricht.",
+    "errorNoSession": "Anrufe brauchen eine gegenseitige Verifizierung mit {{name}}. Verifiziert euch zuerst persönlich.",
     "errorBlocked": "Du hast {{name}} blockiert. Hebe die Blockierung auf, um anzurufen.",
     "errorBusy": "Du bist bereits in einem Anruf.",
     "errorMic": "Das Mikrofon ist nicht verfügbar.",
@@ -244,10 +248,6 @@
     "notNucoTitle": "Das ist kein Nuco-Code",
     "notNucoBody": "Dieser QR ist ein gültiger Code, aber keine Nuco-Identität.",
     "scanNuco": "Einen Nuco-Code scannen",
-    "offlineTitle": "Server nicht erreichbar",
-    "offlineBody": "Zum Hinzufügen eines Kontakts ist eine Verbindung nötig, um seine Schlüssel zu laden. Verbinde dich mit deinem Server und versuche es erneut.",
-    "mismatchTitle": "Schlüssel stimmen nicht überein",
-    "mismatchBody": "Der vom Server gelieferte Schlüssel stimmt nicht mit ihrem Code überein. Vertraue diesem Kontakt nicht und versuche es erneut.",
     "selfTitle": "Das ist dein eigener Code",
     "selfBody": "Du kannst dich nicht selbst als Kontakt hinzufügen. Scanne stattdessen den Code einer anderen Person.",
     "alreadyAddedTitle": "Bereits in deinen Kontakten",
@@ -269,6 +269,10 @@
     "markVerified": "Sie stimmen überein, als verifiziert markieren",
     "markVerifiedCountdown": "Sie stimmen überein, als verifiziert markieren ({{seconds}})",
     "emojiCompare": "Oder diese Emoji vergleichen",
+    "waitingTitle": "Warten auf {{name}}",
+    "waitingBody": "Lass {{name}} deinen Code scannen und die Emojis bestätigen. Nachrichten werden freigeschaltet, sobald ihr beide bestätigt habt.",
+    "verifiedTitle": "Verifiziert",
+    "verifiedBody": "Du und {{name}} habt euch gegenseitig bestätigt. Nachrichten sind freigeschaltet.",
     "reVerify": "Sicherheitsnummer erneut verifizieren",
     "reVerifiedTitle": "Identität bestätigt",
     "reVerifiedBody": "{{name}}s Sicherheitsnummer stimmt überein. Dieses Gespräch ist weiterhin Ende-zu-Ende-verifiziert.",
@@ -284,12 +288,16 @@
     "message": "Nachricht",
     "mute": "Stummschalten",
     "verifiedInPerson": "Persönlich verifiziert, {{date}}",
+    "waitingForPeer": "Warten darauf, dass {{name}} dich zurückbestätigt.",
     "disappearingMessages": "Verschwindende Nachrichten",
     "muteNotifications": "Benachrichtigungen stummschalten",
     "blockContact": "Kontakt blockieren",
     "deleteContact": "Kontakt löschen",
     "deleteConfirmTitle": "Diesen Kontakt löschen?",
     "deleteConfirmBody": "Dies entfernt {{name}}, eure Unterhaltung und alle Nachrichten von diesem Gerät. Es kann nicht rückgängig gemacht werden."
+  },
+  "system": {
+    "verified": "Ihr habt euch gegenseitig verifiziert. Nachrichten sind freigeschaltet."
   },
   "settings": {
     "title": "Einstellungen",

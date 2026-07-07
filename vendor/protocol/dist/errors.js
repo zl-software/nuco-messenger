@@ -8,7 +8,6 @@ export var ErrorCode;
     ErrorCode["AuthFailed"] = "AUTH_FAILED";
     ErrorCode["NotRegistered"] = "NOT_REGISTERED";
     ErrorCode["NoSuchHandle"] = "NO_SUCH_HANDLE";
-    ErrorCode["NoOneTimePreKey"] = "NO_ONE_TIME_PREKEY";
     ErrorCode["RateLimited"] = "RATE_LIMITED";
     ErrorCode["QueueFull"] = "QUEUE_FULL";
     ErrorCode["MessageTooLarge"] = "MESSAGE_TOO_LARGE";

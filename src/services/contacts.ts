@@ -1,22 +1,22 @@
-// Contacts service: adding a contact from a scanned QR (anchoring their identity key by
-// physical presence, fetching their bundle, and establishing a session) and marking a
-// contact verified after the in person safety number compare or reciprocal scan.
+// Contacts service: adding a contact from a scanned QR card. The card (v2) carries the
+// identity key AND the signed prekey, so the scan anchors the peer's key by physical
+// presence and establishes the session fully offline; the relay is not involved at all.
+// Communication stays locked until mutual verification completes (see verification.ts).
 
 import * as Crypto from 'expo-crypto';
 
 import { CONTACT_CARD_VERSION, isContactCard, type ContactCard } from '@nuco/protocol';
+import { isSessionInitiator } from '@/crypto/verification';
 import { getSignal, loadAccount, type Account } from './account';
+import { reconnectRelay } from './boot';
 import { formatFingerprint } from './onboarding';
-import { getRelay } from './relay';
-import { upsertContact, getContactByHandle, setVerified, type Contact } from '@/db/repos/contacts';
+import { upsertContact, getContactByHandle, type Contact } from '@/db/repos/contacts';
 import { ensureConversation } from '@/db/repos/conversations';
 
 export type ScanOutcome =
   | { kind: 'added'; contact: Contact; alreadyExisted: boolean }
   | { kind: 'invalid' }
   | { kind: 'notNuco' }
-  | { kind: 'offline' }
-  | { kind: 'mismatch' }
   | { kind: 'self' };
 
 const DEFAULT_RETENTION_SECONDS = 86400;
@@ -27,6 +27,8 @@ export function buildContactCard(account: Account): ContactCard {
     v: CONTACT_CARD_VERSION,
     handle: account.handle,
     identityKey: account.identityKeyB64,
+    registrationId: account.registrationId,
+    signedPreKey: account.signedPreKey,
     fingerprint: formatFingerprint(account.identityKeyB64),
     displayName: account.displayName,
   };
@@ -44,32 +46,34 @@ export function parseScannedCode(data: string): ContactCard | 'invalid' | 'notNu
   return parsed;
 }
 
-// Add a contact from a scanned card. Scanning anchors their key by physical presence, so the
-// fetched bundle's identity key must match the card. The scanner can then mark verified.
+// Add a contact from a scanned card. Fully offline: the card carries everything X3DH
+// needs, and physical presence anchors the identity key.
 export async function addContactFromCard(card: ContactCard): Promise<ScanOutcome> {
   // Scanning your own code would otherwise create a conversation with yourself.
   const account = await loadAccount();
-  if (account && card.handle === account.handle) return { kind: 'self' };
-
-  const relay = getRelay();
-  // Fetching the bundle waits on the socket being ready, which never resolves while the relay
-  // is unreachable. Give an in progress connect a few seconds, then fail with a clear offline
-  // outcome instead of hanging the scan forever.
-  if (!relay || !(await relay.waitUntilReady(8000))) return { kind: 'offline' };
+  if (!account) return { kind: 'invalid' };
+  if (card.handle === account.handle) return { kind: 'self' };
 
   const existing = await getContactByHandle(card.handle);
+  // A re-scan showing a different identity key means the peer re-onboarded (or worse).
+  // The old confirms bound the old key, so verification restarts from zero. Proper key
+  // change surfacing is deferred to the native libsignal swap.
+  const identityChanged = existing != null && existing.identityPubkey !== card.identityKey;
   const now = Date.now();
-  let bundle;
-  try {
-    bundle = await relay.fetchPreKeyBundle(card.handle);
-  } catch {
-    return { kind: 'invalid' };
-  }
-  if (bundle.identityKey !== card.identityKey) return { kind: 'mismatch' };
 
+  // Deterministic initiator: only the byte smaller identity key runs X3DH. The other side
+  // becomes the responder when the initiator's first sealed (prekey) message arrives, so
+  // mutual scanning never creates two racing sessions. processPreKey also validates the
+  // card's signed prekey signature against its identity key.
   try {
-    if (!(await getSignal().hasSession(card.handle))) {
-      await getSignal().startSession(card.handle, bundle);
+    if (isSessionInitiator(account.identityKeyB64, card.identityKey)) {
+      if (identityChanged || !(await getSignal().hasSession(card.handle))) {
+        await getSignal().startSession(card.handle, {
+          identityKey: card.identityKey,
+          registrationId: card.registrationId,
+          signedPreKey: card.signedPreKey,
+        });
+      }
     }
   } catch {
     return { kind: 'invalid' };
@@ -81,18 +85,21 @@ export async function addContactFromCard(card: ContactCard): Promise<ScanOutcome
     displayName: card.displayName || card.handle,
     identityPubkey: card.identityKey,
     fingerprint: card.fingerprint,
-    safetyNumber: existing?.safetyNumber ?? null,
-    status: existing?.status ?? 'connected',
-    verifiedAt: existing?.verifiedAt ?? null,
+    safetyNumber: identityChanged ? null : (existing?.safetyNumber ?? null),
+    status: identityChanged ? 'connected' : (existing?.status ?? 'connected'),
+    verifiedAt: identityChanged ? null : (existing?.verifiedAt ?? null),
+    localConfirmedAt: identityChanged ? null : (existing?.localConfirmedAt ?? null),
+    peerConfirmedAt: identityChanged ? null : (existing?.peerConfirmedAt ?? null),
+    cardSpkPub: card.signedPreKey.publicKey,
     blocked: existing?.blocked ?? false,
     muted: existing?.muted ?? false,
     createdAt: existing?.createdAt ?? now,
   };
   await upsertContact(contact);
   await ensureConversation(contact.id, contact.id, DEFAULT_RETENTION_SECONDS, now);
+  // A confirm sent to us before this contact existed sits unacked at the relay (see the
+  // unknown sender rule in messaging). Reconnecting drains the queue and redelivers it
+  // now that we can process it.
+  void reconnectRelay();
   return { kind: 'added', contact, alreadyExisted: existing !== null };
-}
-
-export async function markVerified(contactId: string, safetyNumber: string): Promise<void> {
-  await setVerified(contactId, safetyNumber, Date.now());
 }

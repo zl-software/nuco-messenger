@@ -6,7 +6,7 @@
 import * as Crypto from 'expo-crypto';
 
 import { encodeContent, decodeContent, type MessageContent, type MessageEnvelope } from '@nuco/protocol';
-import { getContactByHandle } from '@/db/repos/contacts';
+import { getContactByHandle, isMutuallyVerified, type Contact } from '@/db/repos/contacts';
 import {
   ensureConversation,
   getConversation,
@@ -41,6 +41,22 @@ export function setCallSignalHandler(fn: CallSignalHandler): void {
   callSignalHandler = fn;
 }
 
+// Verification handoff, same setter pattern: the verification service registers its
+// handlers here (via boot) so messaging never imports it and no import cycle forms.
+// confirmHandler processes an inbound verify/confirm; deferredFlusher runs after any
+// successful decrypt from a still pending contact, because that decrypt proves a session
+// exists and a confirm deferred at SAS press time (responder role) can finally go out.
+type ConfirmHandler = (contact: Contact, cardHash: string, envelopeId: string, sentAt: number) => Promise<void>;
+let confirmHandler: ConfirmHandler = async () => undefined;
+export function setConfirmHandler(fn: ConfirmHandler): void {
+  confirmHandler = fn;
+}
+type DeferredFlusher = (contact: Contact) => Promise<void>;
+let deferredFlusher: DeferredFlusher = async () => undefined;
+export function setDeferredFlusher(fn: DeferredFlusher): void {
+  deferredFlusher = fn;
+}
+
 // A retention negotiation event logged in the timeline. The direction carries the actor
 // ('out' is the local user, 'in' is the peer); the body carries the requested or applied
 // seconds value, localized at render time. Rows expire with the conversation retention
@@ -71,9 +87,39 @@ async function insertSystemMessage(opts: {
   });
 }
 
+// The "you verified each other" timeline row, written once when the pair unlocks. Inbound
+// completion passes the envelope id (a relay redelivery becomes an INSERT OR IGNORE
+// no-op); local completion passes a fresh id.
+export async function insertVerifiedSystemRow(
+  conversationId: string,
+  id: string,
+  sentAt: number,
+  direction: 'in' | 'out',
+): Promise<void> {
+  const now = Date.now();
+  const convo = (await getConversation(conversationId)) ?? (await ensureConversation(conversationId, conversationId, 86400, now));
+  await insertSystemMessage({
+    id,
+    conversationId,
+    kind: 'verified',
+    direction,
+    value: null,
+    retentionSeconds: convo.retentionSeconds,
+    sentAt,
+    expiryFrom: now,
+    read: direction === 'out',
+  });
+}
+
 // Seal a typed content envelope toward a contact and hand it to the relay. Also used by
-// the call service for signaling, so it is exported.
+// the call service for signaling and the verification service for confirms, so it is
+// exported. This is the single send side gate: nothing but verify/confirm may leave for
+// a contact who has not completed mutual verification.
 export async function sendContent(handle: string, content: MessageContent, id: string): Promise<void> {
+  if (content.t !== 'verify/confirm') {
+    const contact = await getContactByHandle(handle);
+    if (!contact || !isMutuallyVerified(contact)) throw new Error('contact not mutually verified');
+  }
   const sealed = await getSignal().encrypt(handle, encodeContent(content));
   const relay = getRelay();
   if (!relay) throw new Error('relay not started');
@@ -265,8 +311,12 @@ async function doReceiveEnvelope(from: string, envelope: MessageEnvelope): Promi
   try {
     const contact = await getContactByHandle(from);
     if (!contact) {
-      // Unknown sender: ack to clear the relay queue but do not store.
-      relay?.ack(envelope.id);
+      // Unknown sender. A prekey envelope can only be the verify/confirm of someone who
+      // scanned this device's card before we scanned theirs: leave it UNACKED so it stays
+      // queued at the relay (the post scan reconnect redelivers it once the contact
+      // exists, or the queue TTL expires it). A whisper envelope from an unknown handle
+      // can never become decryptable: ack and drop.
+      if (envelope.messageType !== 'prekey') relay?.ack(envelope.id);
       return null;
     }
     if (contact.blocked) {
@@ -278,6 +328,23 @@ async function doReceiveEnvelope(from: string, envelope: MessageEnvelope): Promi
     const plaintext = await getSignal().decrypt(from, { ciphertext: envelope.ciphertext, messageType: envelope.messageType });
     const content = decodeContent(plaintext);
     const now = Date.now();
+
+    if (content.t === 'verify/confirm') {
+      await confirmHandler(contact, content.cardHash, envelope.id, envelope.sentAt || now);
+      relay?.ack(envelope.id);
+      return contact.id;
+    }
+    if (!isMutuallyVerified(contact)) {
+      // Strict receive gate: a conforming client never sends anything but verify/confirm
+      // before mutual verification, so whatever this is comes from a misbehaving peer.
+      // Decrypting above kept the ratchet healthy; ack and drop without storing,
+      // displaying, or ringing. The successful decrypt proves a session exists, so a
+      // deferred own confirm can go out now.
+      await deferredFlusher(contact);
+      relay?.ack(envelope.id);
+      return contact.id;
+    }
+    await deferredFlusher(contact);
     const convo = (await getConversation(contact.id)) ?? (await ensureConversation(contact.id, contact.id, 86400, now));
 
     switch (content.t) {

@@ -1,16 +1,17 @@
-// Identity and prekey generation. Produces the long term identity key pair, registration
-// id, signed prekey, a batch of one time prekeys, and a dedicated Ed25519 transport auth
-// key pair. Public parts become the prekey upload and the QR contact card; private parts
-// are persisted only in the encrypted store.
+// Identity and signed prekey generation. Produces the long term identity key pair,
+// registration id, ONE signed prekey, and a dedicated Ed25519 transport auth key pair.
+// The signed prekey's public parts go into the QR contact card (the only channel that
+// distributes it since protocol 2.0); private parts are persisted only in the encrypted
+// store, and the signed prekey private key is never deleted (the Signal library needs it
+// to answer inbound prekey messages for the account's lifetime).
 
 import {
   KeyHelper,
   type KeyPairType,
   type SignedPreKeyPairType,
-  type PreKeyPairType,
 } from '@privacyresearch/libsignal-protocol-typescript';
 import { ed25519 } from '@noble/curves/ed25519.js';
-import type { PreKeyUpload, SignedPreKeyPublic, OneTimePreKeyPublic } from '@nuco/protocol';
+import type { SignedPreKeyPublic } from '@nuco/protocol';
 
 import { abToBase64, base64ToBytes, bytesToBase64 } from './bytes';
 import type { NucoSignalStore } from './store';
@@ -26,11 +27,6 @@ export interface IdentityMaterial {
   authKeyPair: AuthKeyPair;
 }
 
-export interface PreKeyMaterial {
-  signedPreKey: SignedPreKeyPairType;
-  oneTimePreKeys: PreKeyPairType[];
-}
-
 export async function generateIdentity(): Promise<IdentityMaterial> {
   const identityKeyPair = await KeyHelper.generateIdentityKeyPair();
   const registrationId = KeyHelper.generateRegistrationId();
@@ -39,48 +35,30 @@ export async function generateIdentity(): Promise<IdentityMaterial> {
   return { identityKeyPair, registrationId, authKeyPair: { publicKey, secretKey } };
 }
 
-export async function generatePreKeys(
+export async function generateSignedPreKey(
   identityKeyPair: KeyPairType,
-  signedKeyId: number,
-  startId: number,
-  count: number,
-): Promise<PreKeyMaterial> {
-  const signedPreKey = await KeyHelper.generateSignedPreKey(identityKeyPair, signedKeyId);
-  const oneTimePreKeys: PreKeyPairType[] = [];
-  for (let i = 0; i < count; i++) {
-    oneTimePreKeys.push(await KeyHelper.generatePreKey(startId + i));
-    // Yield to the event loop periodically so the keygen UI stays responsive while the
-    // pure JavaScript curve generates keys.
-    if (i % 4 === 3) await new Promise((resolve) => setTimeout(resolve, 0));
-  }
-  return { signedPreKey, oneTimePreKeys };
+  keyId: number,
+): Promise<SignedPreKeyPairType> {
+  return KeyHelper.generateSignedPreKey(identityKeyPair, keyId);
 }
 
-export function toUploadBundle(pre: PreKeyMaterial): PreKeyUpload {
-  const signedPreKey: SignedPreKeyPublic = {
-    keyId: pre.signedPreKey.keyId,
-    publicKey: abToBase64(pre.signedPreKey.keyPair.pubKey),
-    signature: abToBase64(pre.signedPreKey.signature),
+export function toSignedPreKeyPublic(pre: SignedPreKeyPairType): SignedPreKeyPublic {
+  return {
+    keyId: pre.keyId,
+    publicKey: abToBase64(pre.keyPair.pubKey),
+    signature: abToBase64(pre.signature),
   };
-  const oneTimePreKeys: OneTimePreKeyPublic[] = pre.oneTimePreKeys.map((k) => ({
-    keyId: k.keyId,
-    publicKey: abToBase64(k.keyPair.pubKey),
-  }));
-  return { signedPreKey, oneTimePreKeys };
 }
 
-// Persist identity and prekeys into the Signal store so the cipher can use them.
+// Persist identity and the signed prekey into the Signal store so the cipher can use them.
 export async function installIdentity(
   store: NucoSignalStore,
   id: IdentityMaterial,
-  pre: PreKeyMaterial,
+  signedPreKey: SignedPreKeyPairType,
 ): Promise<void> {
   await store.setIdentityKeyPair(id.identityKeyPair);
   await store.setLocalRegistrationId(id.registrationId);
-  await store.storeSignedPreKey(pre.signedPreKey.keyId, pre.signedPreKey.keyPair);
-  for (const k of pre.oneTimePreKeys) {
-    await store.storePreKey(k.keyId, k.keyPair);
-  }
+  await store.storeSignedPreKey(signedPreKey.keyId, signedPreKey.keyPair);
 }
 
 export function identityPublicKeyBase64(id: IdentityMaterial): string {

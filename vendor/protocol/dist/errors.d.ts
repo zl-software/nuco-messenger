@@ -5,7 +5,6 @@ export declare enum ErrorCode {
     AuthFailed = "AUTH_FAILED",
     NotRegistered = "NOT_REGISTERED",
     NoSuchHandle = "NO_SUCH_HANDLE",
-    NoOneTimePreKey = "NO_ONE_TIME_PREKEY",
     RateLimited = "RATE_LIMITED",
     QueueFull = "QUEUE_FULL",
     MessageTooLarge = "MESSAGE_TOO_LARGE",

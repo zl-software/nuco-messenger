@@ -8,13 +8,11 @@ import { markUnlockedWithKey } from '@/lock/lock-controller';
 import { provisionAccount, type Account } from './account';
 import { goOnlineFirstRun } from './boot';
 import { useSettings } from '@/state/settings';
-import type { PreKeyUpload } from '@nuco/protocol';
 
 interface Draft {
   displayName: string;
   dbKeyB64?: string;
   account?: Account;
-  upload?: PreKeyUpload;
 }
 
 let draft: Draft = { displayName: '' };
@@ -33,10 +31,9 @@ export async function runKeyGeneration(): Promise<{ fingerprint: string }> {
   const dbKeyB64 = await provisionDatabaseKey();
   await openEncryptedDb(dbKeyB64);
   markUnlockedWithKey(dbKeyB64);
-  const { account, upload } = await provisionAccount(draft.displayName || 'You');
+  const { account } = await provisionAccount(draft.displayName || 'You');
   draft.dbKeyB64 = dbKeyB64;
   draft.account = account;
-  draft.upload = upload;
   return { fingerprint: formatFingerprint(account.identityKeyB64) };
 }
 
@@ -46,10 +43,10 @@ export async function setPin(pin: string): Promise<void> {
 }
 
 export async function completeOnboarding(): Promise<void> {
-  if (draft.account && draft.upload) {
-    // Connect and publish prekeys in the background. The relay may be unreachable right now;
-    // never block finishing onboarding on it (the client auto reconnects).
-    void goOnlineFirstRun(draft.account, draft.upload).catch(() => undefined);
+  if (draft.account) {
+    // Connect in the background. The relay may be unreachable right now; never block
+    // finishing onboarding on it (the client auto reconnects).
+    void goOnlineFirstRun(draft.account).catch(() => undefined);
   }
   await useSettings.getState().update({ onboardingComplete: true });
   draft = { displayName: '' };

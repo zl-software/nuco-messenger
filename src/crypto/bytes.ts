@@ -69,6 +69,16 @@ export function abToBase64(ab: ArrayBuffer | ArrayBufferView): string {
   return bytesToBase64(u8(ab));
 }
 
+// Lexicographic byte order. Used wherever both peers must derive the same result from a
+// pair of keys regardless of who computes it (the SAS sort, the session initiator rule).
+export function compareBytes(a: Uint8Array, b: Uint8Array): number {
+  const len = Math.min(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    if (a[i]! !== b[i]!) return a[i]! - b[i]!;
+  }
+  return a.length - b.length;
+}
+
 export function base64ToAb(b64: string): ArrayBuffer {
   return toArrayBuffer(base64ToBytes(b64));
 }

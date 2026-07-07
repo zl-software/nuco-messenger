@@ -63,7 +63,8 @@ export type SystemMessageI18nKey =
   | 'call.rowCanceledOut'
   | 'call.rowDeclinedIn'
   | 'call.rowDeclinedOut'
-  | 'call.rowFailed';
+  | 'call.rowFailed'
+  | 'system.verified';
 
 // The i18n key for a system message row. The caller interpolates { name, value, duration }.
 // Turning the timer off has dedicated keys so the copy never reads "disappear after Off".
@@ -100,6 +101,8 @@ export function systemMessageKey(
       return 'call.rowMissedOut';
     case 'call/declined':
       return incoming ? 'call.rowDeclinedIn' : 'call.rowDeclinedOut';
+    case 'verified':
+      return 'system.verified';
   }
 }
 

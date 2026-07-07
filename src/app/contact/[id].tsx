@@ -11,6 +11,7 @@ import { useCall } from '@/state/call';
 import {
   deleteContact,
   getContact,
+  isMutuallyVerified,
   setBlocked,
   setMuted,
   type Contact,
@@ -64,7 +65,8 @@ export default function ContactDetailScreen() {
     }, [load]),
   );
 
-  const isVerified = contact?.status === 'verified';
+  const isVerified = contact != null && isMutuallyVerified(contact);
+  const waitingForPeer = contact?.localConfirmedAt != null && contact.peerConfirmedAt == null;
   const verifiedDate =
     contact?.verifiedAt != null ? new Date(contact.verifiedAt).toLocaleDateString() : '';
   const retentionSeconds = conversation?.retentionSeconds ?? null;
@@ -281,11 +283,18 @@ export default function ContactDetailScreen() {
               />
             </Card>
           ) : (
-            <Button
-              label={t('contacts.verify')}
-              onPress={() => router.push({ pathname: '/verify/[id]', params: { id: contact.id } })}
-              style={styles.verifyCta}
-            />
+            <>
+              {waitingForPeer ? (
+                <Text variant="bodySecondary" color="textSecondary" style={styles.waitingHint}>
+                  {t('contactDetail.waitingForPeer', { name: contact.displayName })}
+                </Text>
+              ) : null}
+              <Button
+                label={t('contacts.verify')}
+                onPress={() => router.push({ pathname: '/verify/[id]', params: { id: contact.id } })}
+                style={styles.verifyCta}
+              />
+            </>
           )}
 
           <Card tone="danger" style={styles.dangerCard}>
@@ -411,6 +420,7 @@ const styles = StyleSheet.create({
   safety: { lineHeight: 22, letterSpacing: 1 },
   reverify: { marginTop: Spacing.xs },
   verifyCta: { marginTop: Spacing.lg },
+  waitingHint: { textAlign: 'center', marginTop: Spacing.lg },
   dangerCard: { marginTop: Spacing.lg, padding: 0 },
   dangerRow: {
     flexDirection: 'row',

@@ -1,14 +1,16 @@
-// Account provisioning and loading. The identity key pair and prekeys live in the encrypted
-// Signal store; the account record (handle, display name, public identity key, transport
-// auth key pair) lives in the encrypted meta table. Nothing here is readable until unlock.
+// Account provisioning and loading. The identity key pair and signed prekey live in the
+// encrypted Signal store; the account record (handle, display name, public identity key,
+// signed prekey public parts, transport auth key pair) lives in the encrypted meta table.
+// Nothing here is readable until unlock. The signed prekey public parts are persisted so
+// the QR contact card can embed them without touching the Signal store.
 
 import * as Crypto from 'expo-crypto';
 
 import {
   generateIdentity,
-  generatePreKeys,
+  generateSignedPreKey,
   installIdentity,
-  toUploadBundle,
+  toSignedPreKeyPublic,
   identityPublicKeyBase64,
   authPublicKeyBase64,
   NucoSignal,
@@ -16,17 +18,18 @@ import {
   type AuthKeyPair,
 } from '@/crypto';
 import { bytesToBase64, base64ToBytes } from '@/crypto/bytes';
-import type { PreKeyUpload } from '@nuco/protocol';
+import type { SignedPreKeyPublic } from '@nuco/protocol';
 import { SqliteSignalBackend } from '@/db/signal-backend';
 import { getMetaJson, setMetaJson } from '@/db/repos/meta';
 
-const ONE_TIME_PREKEY_COUNT = 20;
+const SIGNED_PREKEY_ID = 1;
 
 export interface Account {
   handle: string;
   displayName: string;
   identityKeyB64: string;
   registrationId: number;
+  signedPreKey: SignedPreKeyPublic;
   authKeyPair: AuthKeyPair;
 }
 
@@ -35,6 +38,7 @@ interface StoredAccount {
   displayName: string;
   identityKeyB64: string;
   registrationId: number;
+  signedPreKey: SignedPreKeyPublic;
   authPub: string;
   authSecret: string;
 }
@@ -53,13 +57,12 @@ function randomHandle(): string {
   return bytesToBase64(Crypto.getRandomBytes(16)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-// Generate a new identity and account record. Returns the account plus the prekey upload to
-// publish to the relay. Call after the encrypted database is open.
-export async function provisionAccount(displayName: string): Promise<{ account: Account; upload: PreKeyUpload }> {
+// Generate a new identity and account record. Call after the encrypted database is open.
+export async function provisionAccount(displayName: string): Promise<{ account: Account }> {
   const store = new NucoSignalStore(new SqliteSignalBackend());
   const id = await generateIdentity();
-  const pre = await generatePreKeys(id.identityKeyPair, 1, 1, ONE_TIME_PREKEY_COUNT);
-  await installIdentity(store, id, pre);
+  const signedPreKey = await generateSignedPreKey(id.identityKeyPair, SIGNED_PREKEY_ID);
+  await installIdentity(store, id, signedPreKey);
   signal = new NucoSignal(store);
 
   const stored: StoredAccount = {
@@ -67,6 +70,7 @@ export async function provisionAccount(displayName: string): Promise<{ account: 
     displayName,
     identityKeyB64: identityPublicKeyBase64(id),
     registrationId: id.registrationId,
+    signedPreKey: toSignedPreKeyPublic(signedPreKey),
     authPub: authPublicKeyBase64(id.authKeyPair),
     authSecret: bytesToBase64(id.authKeyPair.secretKey),
   };
@@ -78,54 +82,10 @@ export async function provisionAccount(displayName: string): Promise<{ account: 
       displayName,
       identityKeyB64: stored.identityKeyB64,
       registrationId: stored.registrationId,
+      signedPreKey: stored.signedPreKey,
       authKeyPair: id.authKeyPair,
     },
-    upload: toUploadBundle(pre),
   };
-}
-
-const PREKEY_CURSOR_KEY = 'prekeyCursor';
-
-interface PreKeyCursor {
-  nextSignedId: number;
-  nextOneTimeId: number;
-}
-
-// Serialize prekey generation: the read-generate-write of the cursor is not atomic, so two
-// concurrent callers (quick lock/unlock, a relay reconnect racing a fetch) could read the same
-// cursor, mint overlapping ids, and overwrite each other's stored prekeys. Chaining calls makes
-// each run see the cursor the previous one committed.
-let preKeyGenChain: Promise<unknown> = Promise.resolve();
-
-// Rebuild a fresh prekey batch, persist the private parts into the encrypted store, and return
-// the public upload for the relay. Used to (re)publish to a relay that holds none of our keys
-// (self hosted or reset). Each batch uses fresh ids past a persisted cursor, so prekeys from
-// earlier batches stay valid for any in flight sessions. Returns null if there is no identity.
-export function generatePreKeyUpload(): Promise<PreKeyUpload | null> {
-  const result = preKeyGenChain.then(doGeneratePreKeyUpload, doGeneratePreKeyUpload);
-  preKeyGenChain = result.then(
-    () => undefined,
-    () => undefined,
-  );
-  return result;
-}
-
-async function doGeneratePreKeyUpload(): Promise<PreKeyUpload | null> {
-  const store = new NucoSignalStore(new SqliteSignalBackend());
-  const identityKeyPair = await store.getIdentityKeyPair();
-  if (!identityKeyPair) return null;
-  const cursor = (await getMetaJson<PreKeyCursor>(PREKEY_CURSOR_KEY)) ?? {
-    nextSignedId: 2,
-    nextOneTimeId: ONE_TIME_PREKEY_COUNT + 1,
-  };
-  const pre = await generatePreKeys(identityKeyPair, cursor.nextSignedId, cursor.nextOneTimeId, ONE_TIME_PREKEY_COUNT);
-  await store.storeSignedPreKey(pre.signedPreKey.keyId, pre.signedPreKey.keyPair);
-  for (const k of pre.oneTimePreKeys) await store.storePreKey(k.keyId, k.keyPair);
-  await setMetaJson(PREKEY_CURSOR_KEY, {
-    nextSignedId: cursor.nextSignedId + 1,
-    nextOneTimeId: cursor.nextOneTimeId + ONE_TIME_PREKEY_COUNT,
-  });
-  return toUploadBundle(pre);
 }
 
 export async function loadAccount(): Promise<Account | null> {
@@ -136,16 +96,16 @@ export async function loadAccount(): Promise<Account | null> {
     displayName: stored.displayName,
     identityKeyB64: stored.identityKeyB64,
     registrationId: stored.registrationId,
+    signedPreKey: stored.signedPreKey,
     authKeyPair: { publicKey: base64ToBytes(stored.authPub), secretKey: base64ToBytes(stored.authSecret) },
   };
 }
 
-// The register frame parameters for this account (used on the relay handshake).
+// The register frame parameters for this account (used on the relay handshake). The relay
+// learns only the transport auth key and push routing, never the Signal identity.
 export function registerParamsFor(account: Account, push: import('@nuco/protocol').PushRegistration) {
   return {
-    identityKey: account.identityKeyB64,
     authKey: bytesToBase64(account.authKeyPair.publicKey),
-    registrationId: account.registrationId,
     deviceId: 1,
     push,
   };

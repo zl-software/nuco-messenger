@@ -11,8 +11,6 @@ import {
   type ServerMessage,
   type ClientMessage,
   type MessageEnvelope,
-  type PreKeyBundle,
-  type PreKeyUpload,
   type PushRegistration,
   type ErrorCodeValue,
 } from '@nuco/protocol';
@@ -30,9 +28,7 @@ export interface WebSocketLike {
 export type WebSocketCtor = new (url: string) => WebSocketLike;
 
 export interface RegisterParams {
-  identityKey: string;
   authKey: string;
-  registrationId: number;
   deviceId: number;
   push: PushRegistration;
 }
@@ -156,26 +152,6 @@ export class RelayClient {
     });
   }
 
-  async publishPreKeys(upload: PreKeyUpload): Promise<number> {
-    await this.ensureReady();
-    const reply = await this.request((rid) => ({ type: 'publishPreKeys', rid, preKeys: upload }));
-    return reply.type === 'ok' ? Number(reply.data?.oneTimeCount ?? 0) : 0;
-  }
-
-  async fetchPreKeyBundle(handle: string): Promise<PreKeyBundle> {
-    await this.ensureReady();
-    const reply = await this.request((rid) => ({ type: 'fetchPreKeyBundle', rid, handle }));
-    if (reply.type !== 'preKeyBundle') throw new Error('unexpected reply to fetchPreKeyBundle');
-    return reply.bundle;
-  }
-
-  async preKeyCount(): Promise<{ hasSignedPreKey: boolean; oneTimeCount: number }> {
-    await this.ensureReady();
-    const reply = await this.request((rid) => ({ type: 'preKeyCount', rid }));
-    if (reply.type !== 'preKeyCountResult') throw new Error('unexpected reply to preKeyCount');
-    return { hasSignedPreKey: reply.hasSignedPreKey, oneTimeCount: reply.oneTimeCount };
-  }
-
   // Update the device record (for example a new push token) on an authenticated socket.
   async updateRegistration(params: RegisterParams): Promise<void> {
     await this.ensureReady();
@@ -289,8 +265,6 @@ export class RelayClient {
         void this.opts.onDeliver(msg.from, msg.envelope);
         return;
       case 'ok':
-      case 'preKeyBundle':
-      case 'preKeyCountResult':
       case 'turnCredentialsResult': {
         const rid = msg.rid;
         this.settleRid(rid, (p) => p.resolve(msg));
