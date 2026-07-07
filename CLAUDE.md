@@ -10,6 +10,14 @@ polyfills, camera, push, foreground service). Build with `eas build --profile de
 ## Rules
 
 - All Signal specific code stays behind `src/crypto/signal.ts` (the v1 library is UNAUDITED).
+- A conversation is usable only after MUTUAL verification (both scanned, both confirmed the
+  emoji SAS). The single send gate lives in `messaging.sendContent` (only `verify/confirm`
+  is exempt); the receive gate decrypts, acks, and silently drops anything else from an
+  unverified contact, and leaves prekey envelopes from UNKNOWN handles unacked (they are
+  the confirm of a not yet reciprocated scan; the post scan reconnect redelivers them).
+  The confirm state machine is `src/services/verification.ts`.
+- `src/crypto/verification.ts` (card hash, initiator rule) must stay Node pure: the e2e
+  harness and the crypto selftest import it (no react-native, expo, or db imports).
 - All WebRTC specific code stays behind `src/calls/engine.ts`, the audio session behind
   `src/calls/audio.ts`. The call state machine (`src/calls/controller.ts`) is Node pure and
   must stay importable without native modules (the e2e harness and `calls:check` depend on
@@ -44,8 +52,8 @@ sibling `protocol/` repo, then sync and commit the vendor copy.
   first import in `src/crypto/polyfills.ts`).
 - Relative imports must be extensionless (Metro), but `@noble` subpaths need `.js`.
 - Large `Text` needs an explicit `lineHeight` or iOS clips the top of glyphs.
-- Heavy sync crypto (scrypt, curve) freezes the UI: use `scryptAsync`, yield during prekey
-  generation.
+- Heavy sync crypto (scrypt, curve) freezes the UI: use `scryptAsync`, keep curve work off
+  the UI path.
 - Do not await `relay.ensureReady()` during onboarding (hangs if the relay is down); connect
   in the background.
 - SQLCipher cannot reopen an existing file with a new key: call `deleteDatabaseFile()` before
@@ -60,13 +68,13 @@ sibling `protocol/` repo, then sync and commit the vendor copy.
 
 ## Structure
 
-`crypto/` (Signal, providers, identity, safety number, SAS, store, secure storage, byte and
-text polyfills), `calls/` (controller state machine, webrtc engine, audio session, CallHost
-overlay, fake engine for Node), `db/` (op-sqlite SQLCipher, repos), `transport/` (relay
-client, push), `lock/` (controller, biometrics, pin), `services/` (account, boot, calls,
-contacts, messaging, onboarding, prefs, relay, server, dev), `state/` (zustand, UI only
-never keys), `ui/` (design system), `constants/theme.ts` (dark tokens), `i18n/`, `app/`
-(routes).
+`crypto/` (Signal, providers, identity, verification primitives, safety number, SAS, store,
+secure storage, byte and text polyfills), `calls/` (controller state machine, webrtc
+engine, audio session, CallHost overlay, fake engine for Node), `db/` (op-sqlite SQLCipher,
+repos), `transport/` (relay client, push), `lock/` (controller, biometrics, pin),
+`services/` (account, boot, calls, contacts, messaging, onboarding, prefs, relay, server,
+verification, dev), `state/` (zustand, UI only never keys), `ui/` (design system),
+`constants/theme.ts` (dark tokens), `i18n/`, `app/` (routes).
 
 ## Dev reset
 
