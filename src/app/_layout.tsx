@@ -20,6 +20,7 @@ import { useSettings } from '@/state/settings';
 import { useSession } from '@/state/session';
 import { attachAppStateGate, subscribeLock } from '@/lock/lock-controller';
 import { stopExpirySweeper } from '@/services/expiry';
+import { resetIfReinstalled } from '@/services/reinstall';
 import { configureNotifications } from '@/transport/push';
 
 void SplashScreen.preventAutoHideAsync();
@@ -48,9 +49,13 @@ export default function RootLayout() {
     let mounted = true;
     initI18n();
     void configureNotifications();
-    void hydrate().then(() => {
-      if (mounted) setReady(true);
-    });
+    // The reinstall guard must run before hydrate so routing never sees leftover keychain
+    // state from a deleted install (see services/reinstall.ts).
+    void resetIfReinstalled()
+      .then(hydrate)
+      .then(() => {
+        if (mounted) setReady(true);
+      });
     const unsub = subscribeLock((status) => {
       setLockStatus(status);
       // The account record carries the transport auth private key. Drop it from UI state on

@@ -50,6 +50,10 @@ sibling `protocol/` repo, then sync and commit the vendor copy.
   in the background.
 - SQLCipher cannot reopen an existing file with a new key: call `deleteDatabaseFile()` before
   provisioning a fresh account.
+- The iOS Keychain (expo-secure-store: prefs, wrapped db keys) SURVIVES deleting the app; the
+  sandbox (SQLCipher db) does not. A reinstall would boot "onboarded" with the old PIN but no
+  account. `src/services/reinstall.ts` wipes the leftover keystore state before routing when
+  the db file is missing; keep that guard ahead of settings hydration.
 - `EXPO_PUBLIC_*` env vars are inlined at bundle time; restart Metro with `-c` to change them.
 - i18next `_one`/`_other` plural resolution needs `Intl.PluralRules`, which Hermes does not
   guarantee. Select the suffixed key by hand (see `retentionLabel` in `src/i18n/system-messages.ts`).

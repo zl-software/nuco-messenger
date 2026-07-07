@@ -2,7 +2,9 @@
 // unlock releases the SQLCipher key, and closed on lock. op-sqlite keeps the key in the
 // native connection, so locking means closing the connection (see lock-controller).
 
-import { open, type DB } from '@op-engineering/op-sqlite';
+import { Platform } from 'react-native';
+import { open, IOS_LIBRARY_PATH, ANDROID_DATABASE_PATH, type DB } from '@op-engineering/op-sqlite';
+import { File } from 'expo-file-system';
 
 import { migrate } from './migrations';
 
@@ -32,6 +34,20 @@ export async function closeEncryptedDb(): Promise<void> {
     connection.close();
   } finally {
     connection = null;
+  }
+}
+
+// Whether the encrypted database file exists on disk, checked WITHOUT opening it (op-sqlite's
+// open() would create the file). The path mirrors what open({ name }) uses: the iOS Library
+// directory or Android's databases directory. Used by the reinstall guard, which must never
+// wipe a real account, so any error reports the file as present.
+export function databaseFileExists(): boolean {
+  const dir = Platform.OS === 'ios' ? IOS_LIBRARY_PATH : ANDROID_DATABASE_PATH;
+  const sep = dir.endsWith('/') ? '' : '/';
+  try {
+    return new File(`file://${dir}${sep}${DB_NAME}`).exists;
+  } catch {
+    return true;
   }
 }
 
