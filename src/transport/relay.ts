@@ -12,6 +12,7 @@ import {
   type ClientMessage,
   type MessageEnvelope,
   type PushRegistration,
+  type RegisterAttestation,
   type ErrorCodeValue,
 } from '@nuco/protocol';
 
@@ -54,6 +55,11 @@ export interface RelayClientOptions {
   // only falls back to registering on a NotRegistered error, so an already registered device is
   // never rejected for trying to re-register before authenticating.
   registerOnConnect?: RegisterParams;
+  // Produces a registration attestation bound to the server challenge when the relay
+  // demands one (ATTESTATION_REQUIRED, see PROTOCOL.md "App attestation"). Absent in
+  // environments that cannot attest (the Node harness, non iOS); registration against an
+  // enforcing relay then fails and onError fires with the code.
+  attestProvider?: (challenge: string) => Promise<RegisterAttestation | null>;
   onDeliver: (from: string, envelope: MessageEnvelope) => void | Promise<void>;
   onStatus?: (status: RelayStatus) => void;
   onError?: (code: ErrorCodeValue) => void;
@@ -314,9 +320,44 @@ export class RelayClient {
     try {
       await this.request((rid) => ({ type: 'register', rid, ...this.registerParams! }));
       this.sendAuthenticate();
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.message === ErrorCode.AttestationRequired) {
+        await this.registerWithAttestation();
+        return;
+      }
       this.ws?.close();
     }
+  }
+
+  // The relay gates new handles on App Attest. Produce an attestation bound to this
+  // socket's challenge and retry the register exactly once; the challenge is not consumed
+  // by the attempt, so the follow up authenticate still works.
+  private async registerWithAttestation(): Promise<void> {
+    const challenge = this.pendingChallenge;
+    if (!this.opts.attestProvider || !challenge) {
+      this.failRegistration(ErrorCode.AttestationRequired);
+      return;
+    }
+    try {
+      const attestation = await this.opts.attestProvider(challenge);
+      if (!attestation) {
+        this.failRegistration(ErrorCode.AttestationRequired);
+        return;
+      }
+      await this.request((rid) => ({ type: 'register', rid, ...this.registerParams!, attestation }));
+      this.sendAuthenticate();
+    } catch {
+      // Apple could not attest (offline, throttled) or the relay rejected the proof;
+      // either way the register did not happen and the user retries from the banner.
+      this.failRegistration(ErrorCode.AttestationFailed);
+    }
+  }
+
+  private failRegistration(code: ErrorCode): void {
+    // Surface the machine code so the app can show a banner with a retry; the retry path
+    // reopens the socket, which yields a fresh challenge and a fresh attestation.
+    this.opts.onError?.(code as ErrorCodeValue);
+    this.ws?.close();
   }
 
   private onAuthenticated(): void {

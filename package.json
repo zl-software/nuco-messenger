@@ -6,6 +6,7 @@
     "@config-plugins/react-native-webrtc": "^15.0.1",
     "@expo-google-fonts/inter": "^0.4.2",
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",
+    "@expo/app-integrity": "^57.0.0",
     "@expo/ui": "~56.0.18",
     "@noble/ciphers": "^2.2.0",
     "@noble/curves": "^2.2.0",

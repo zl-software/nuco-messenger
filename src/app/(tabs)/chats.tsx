@@ -30,6 +30,8 @@ import { isDbOpen } from '@/db/client';
 import { removeChatLockSecrets } from '@/lock/chat-locks';
 import { emitConversationsChanged, subscribeConversationsChanged } from '@/services/data-events';
 import { callDurationParam, retentionLabel, systemMessageKey } from '@/i18n/system-messages';
+import { reconnectRelay } from '@/services/boot';
+import { useSession } from '@/state/session';
 import { useSettings } from '@/state/settings';
 
 interface ChatRow {
@@ -53,6 +55,7 @@ export default function ChatsScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const maskPreviews = useSettings((s) => s.maskChatPreviews);
+  const registrationError = useSession((s) => s.registrationError);
   const [rows, setRows] = useState<ChatRow[]>([]);
   const [query, setQuery] = useState('');
 
@@ -215,10 +218,25 @@ export default function ChatsScreen() {
     </View>
   );
 
+  // The relay refused to create this handle (registration gating). Persistent until a
+  // retry succeeds; retrying opens a fresh socket, challenge, and attestation.
+  const registrationBanner = registrationError ? (
+    <View style={styles.regBanner}>
+      <Text variant="rowTitle" color="text">
+        {t('chats.registrationBlocked')}
+      </Text>
+      <Text variant="bodySecondary" color="textSecondary">
+        {t(`errors.${registrationError}`)}
+      </Text>
+      <Button label={t('common.retry')} onPress={() => void reconnectRelay()} style={styles.regBannerBtn} />
+    </View>
+  ) : null;
+
   if (rows.length === 0) {
     return (
       <Screen contentStyle={styles.screen} edges={['top']}>
         {header}
+        {registrationBanner}
         <View style={styles.empty}>
           <View style={styles.emptyTile}>
             <QrIcon size={40} color={Colors.accent} />
@@ -238,6 +256,7 @@ export default function ChatsScreen() {
   return (
     <Screen contentStyle={styles.screen} edges={['top']}>
       {header}
+      {registrationBanner}
       <SearchField value={query} onChangeText={setQuery} placeholder={t('chats.search')} style={styles.search} />
       <FlatList
         data={filtered}
@@ -358,6 +377,17 @@ const styles = StyleSheet.create({
     borderColor: Overlay.hairline,
   },
   composeBtn: { backgroundColor: Colors.accent, borderColor: Colors.accent },
+  regBanner: {
+    marginHorizontal: Spacing.xl,
+    marginBottom: Spacing.lg,
+    padding: Spacing.lg,
+    gap: Spacing.xs,
+    borderRadius: Radius.card,
+    backgroundColor: Overlay.danger10,
+    borderWidth: 1,
+    borderColor: Overlay.dangerBorder,
+  },
+  regBannerBtn: { marginTop: Spacing.sm },
   search: { marginHorizontal: Spacing.xl, marginBottom: Spacing.lg },
   list: { paddingBottom: Spacing.xxl },
   row: {

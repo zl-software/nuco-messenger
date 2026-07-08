@@ -19,6 +19,9 @@
       "config": {
         "usesNonExemptEncryption": true
       },
+      "entitlements": {
+        "com.apple.developer.devicecheck.appattest-environment": "production"
+      },
       "infoPlist": {
         "CFBundleAllowMixedLocalizations": true,
         "NSFaceIDUsageDescription": "Unlock Nuco with Face ID.",
