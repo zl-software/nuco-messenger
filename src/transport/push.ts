@@ -1,6 +1,8 @@
-// Push: content free wakes only. A push is a signal to open the WebSocket, fetch queued
-// ciphertext, decrypt locally, and post a LOCAL notification. No message content or cleartext
-// sender ever travels through the push provider.
+// Push: content free, always. The relay sends a generic visible banner ("New message",
+// localized on the device via Localizable.strings, see locales/). No message content or
+// cleartext sender ever travels through the push provider, and the app never decrypts
+// for a notification. Tapping the banner just opens the app; there is nothing in the
+// payload to deep link on.
 //
 // iOS: the relay sends APNs directly. The app registers its raw APNs device token here.
 // Android primary: UnifiedPush via a distributor (ntfy by default). The native registration
@@ -8,9 +10,6 @@
 //   falls back to the foreground service path when no distributor is available.
 // Android fallback / GrapheneOS: a foreground service holds the WebSocket and posts local
 //   notifications itself. That is native config-plugin work tracked separately.
-//
-// Respect the lock: if the app is locked we never decrypt for a rich notification; we post
-// the generic one.
 
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
@@ -23,14 +22,19 @@ import { useSettings } from '@/state/settings';
 
 const ANDROID_CHANNEL = 'messages';
 
-// Local notifications are shown by the app, never opened by the system from remote content.
+// Foreground presentation: while the app is unlocked with a live socket, the message is
+// already arriving in the open UI, so a banner for the race (push sent while our socket
+// was still closing at the relay) would only duplicate it. Locked or offline, show it.
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
+  handleNotification: async () => {
+    const suppress = isUnlocked() && (getRelay()?.isConnected() ?? false);
+    return {
+      shouldShowBanner: !suppress,
+      shouldShowList: !suppress,
+      shouldPlaySound: !suppress,
+      shouldSetBadge: false,
+    };
+  },
 });
 
 export async function configureNotifications(): Promise<void> {
@@ -73,31 +77,21 @@ export async function registerPush(): Promise<void> {
   await relay.updateRegistration(registerParamsFor(account, push));
 }
 
+// Route pushes away from this device (the user turned notifications off): replace the
+// stored registration with kind none so the relay stops sending banners entirely.
+export async function unregisterPush(): Promise<void> {
+  const account = await loadAccount();
+  const relay = getRelay();
+  if (!account || !relay) return;
+  await relay.updateRegistration(registerParamsFor(account, { kind: 'none' }));
+}
+
 // Once a UnifiedPush distributor returns an endpoint, call this to route wakes to it.
 export async function setUnifiedPushEndpoint(endpoint: string): Promise<void> {
   const account = await loadAccount();
   const relay = getRelay();
   if (!account || !relay) return;
   await relay.updateRegistration(registerParamsFor(account, { kind: 'unifiedpush', endpoint }));
-}
-
-// Post a local notification after a wake. Content is generic unless the user opted in to a
-// sender name or preview AND the app is unlocked (so decryption is permitted).
-export async function postWakeNotification(decrypted?: { sender?: string; preview?: string }): Promise<void> {
-  const { showSender, showPreview } = useSettings.getState();
-  const unlocked = isUnlocked();
-
-  let title = 'New message';
-  let body: string | undefined;
-  if (unlocked && decrypted) {
-    if (showSender && decrypted.sender) title = decrypted.sender;
-    if (showPreview && decrypted.preview) body = decrypted.preview;
-  }
-
-  await Notifications.scheduleNotificationAsync({
-    content: { title, body, sound: 'default' },
-    trigger: null,
-  });
 }
 
 function getBundleId(): string {

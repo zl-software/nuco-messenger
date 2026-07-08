@@ -8,6 +8,10 @@
     "scheme": "nucomessenger",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#0A0B0E",
+    "locales": {
+      "en": "./locales/en.json",
+      "de": "./locales/de.json"
+    },
     "ios": {
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.zlsoftware.nuco",
@@ -16,6 +20,7 @@
         "usesNonExemptEncryption": true
       },
       "infoPlist": {
+        "CFBundleAllowMixedLocalizations": true,
         "NSFaceIDUsageDescription": "Unlock Nuco with Face ID.",
         "NSCameraUsageDescription": "Nuco uses the camera only to scan a contact's code.",
         "NSMicrophoneUsageDescription": "Nuco uses the microphone only during calls. Audio is end to end encrypted.",

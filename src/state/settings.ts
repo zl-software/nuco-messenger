@@ -23,8 +23,7 @@ function extractPrefs(state: SettingsState): Prefs {
     autoLockMs: state.autoLockMs,
     requirePinAfterRestart: state.requirePinAfterRestart,
     notificationsEnabled: state.notificationsEnabled,
-    showSender: state.showSender,
-    showPreview: state.showPreview,
+    maskChatPreviews: state.maskChatPreviews,
     distributor: state.distributor,
   };
 }

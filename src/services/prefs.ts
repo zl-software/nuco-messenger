@@ -18,8 +18,9 @@ export interface Prefs {
   autoLockMs: number;
   requirePinAfterRestart: boolean;
   notificationsEnabled: boolean;
-  showSender: boolean;
-  showPreview: boolean;
+  // Masks the last message preview in the chats list (a neutral placeholder instead of
+  // the text). Notifications are always content free, so this is an in app setting only.
+  maskChatPreviews: boolean;
   distributor: string;
 }
 
@@ -32,9 +33,10 @@ export const DEFAULT_PREFS: Prefs = {
   biometricEnabled: false,
   autoLockMs: 60000,
   requirePinAfterRestart: true,
-  notificationsEnabled: false,
-  showSender: false,
-  showPreview: false,
+  // On by default: the push itself is content free, and the iOS permission prompt (asked
+  // right after onboarding) remains the user's actual choice.
+  notificationsEnabled: true,
+  maskChatPreviews: true,
   distributor: 'https://ntfy.sh',
 };
 
@@ -42,7 +44,13 @@ export async function loadPrefs(): Promise<Prefs> {
   const json = await SecureStore.getItemAsync(PREFS_KEY);
   if (!json) return { ...DEFAULT_PREFS };
   try {
-    return { ...DEFAULT_PREFS, ...(JSON.parse(json) as Partial<Prefs>) };
+    const stored = JSON.parse(json) as Partial<Prefs> & { showPreview?: boolean };
+    // The retired showPreview pref inverted this setting's meaning; carry a stored
+    // opt-in over so nobody's list previews flip back to masked.
+    if (stored.maskChatPreviews === undefined && typeof stored.showPreview === 'boolean') {
+      stored.maskChatPreviews = !stored.showPreview;
+    }
+    return { ...DEFAULT_PREFS, ...stored };
   } catch {
     return { ...DEFAULT_PREFS };
   }

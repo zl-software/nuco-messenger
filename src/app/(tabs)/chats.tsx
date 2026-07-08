@@ -52,7 +52,7 @@ function formatTime(ms: number): string {
 export default function ChatsScreen() {
   const { t } = useTranslation();
   const router = useRouter();
-  const showPreview = useSettings((s) => s.showPreview);
+  const maskPreviews = useSettings((s) => s.maskChatPreviews);
   const [rows, setRows] = useState<ChatRow[]>([]);
   const [query, setQuery] = useState('');
 
@@ -245,8 +245,8 @@ export default function ChatsScreen() {
         contentContainerStyle={styles.list}
         renderItem={({ item }) => {
           // System rows carry a seconds value in the body; render the localized sentence,
-          // never the raw stored value. Text previews honor the "show preview" privacy setting:
-          // when off, the list shows a neutral placeholder instead of the message body.
+          // never the raw stored value. Text previews honor the "hide previews" privacy
+          // setting: when masked, the list shows a neutral placeholder instead of the body.
           // A locked chat masks EVERY kind (even "missed call"), and its text bodies are
           // sealed in the db anyway, so the placeholder is the only honest preview.
           const preview = item.locked
@@ -257,7 +257,7 @@ export default function ChatsScreen() {
                   value: item.body != null ? retentionLabel(Number(item.body), t) : '',
                   duration: callDurationParam(item.kind, item.body),
                 })
-              : !showPreview
+              : maskPreviews
                 ? t('chats.hiddenPreview')
                 : item.direction === 'out' && item.body
                   ? t('chats.you', { text: item.body })

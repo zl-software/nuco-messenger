@@ -24,6 +24,7 @@ import { useSettings } from '@/state/settings';
 import { formatFingerprint } from '@/services/onboarding';
 import { healthUrlFor, resolveServerUrl } from '@/services/server';
 import { reconnectRelay } from '@/services/boot';
+import { registerPush, unregisterPush } from '@/transport/push';
 import type { Prefs } from '@/services/prefs';
 import type { LanguageSetting } from '@/i18n';
 import { lock } from '@/lock/lock-controller';
@@ -173,6 +174,13 @@ export default function SettingsScreen() {
           value={settings.requirePinAfterRestart}
           onChange={(v) => void update({ requirePinAfterRestart: v })}
         />
+        <Divider />
+        <ToggleRow
+          label={t('settings.maskPreviews')}
+          detail={t('settings.maskPreviewsDetail')}
+          value={settings.maskChatPreviews}
+          onChange={(v) => void update({ maskChatPreviews: v })}
+        />
       </Card>
 
       {/* SERVER */}
@@ -281,22 +289,11 @@ export default function SettingsScreen() {
       <Card>
         <ToggleRow
           label={t('settings.allowNotifications')}
+          detail={t('settings.allowNotificationsDetail')}
           value={settings.notificationsEnabled}
-          onChange={(v) => void update({ notificationsEnabled: v })}
-        />
-        <Divider />
-        <ToggleRow
-          label={t('settings.showSender')}
-          detail={t('settings.showSenderDetail')}
-          value={settings.showSender}
-          onChange={(v) => void update({ showSender: v })}
-        />
-        <Divider />
-        <ToggleRow
-          label={t('settings.showPreview')}
-          detail={t('settings.showPreviewDetail')}
-          value={settings.showPreview}
-          onChange={(v) => void update({ showPreview: v })}
+          onChange={(v) => {
+            void update({ notificationsEnabled: v }).then(() => (v ? registerPush() : unregisterPush()));
+          }}
         />
       </Card>
 

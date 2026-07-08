@@ -1,0 +1,10 @@
+{
+  "ios": {
+    "NSFaceIDUsageDescription": "Unlock Nuco with Face ID.",
+    "NSCameraUsageDescription": "Nuco uses the camera only to scan a contact's code.",
+    "NSMicrophoneUsageDescription": "Nuco uses the microphone only during calls. Audio is end to end encrypted.",
+    "Localizable.strings": {
+      "New message": "New message"
+    }
+  }
+}
