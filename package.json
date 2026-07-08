@@ -2,6 +2,12 @@
   "name": "nuco-messenger",
   "main": "expo-router/entry",
   "version": "1.0.0",
+  "license": "GPL-3.0-only",
+  "author": "ZL Software GmbH (https://zlsoftware.at)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zl-software/nuco-messenger.git"
+  },
   "dependencies": {
     "@config-plugins/react-native-webrtc": "^15.0.1",
     "@expo-google-fonts/inter": "^0.4.2",
