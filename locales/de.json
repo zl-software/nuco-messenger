@@ -4,7 +4,7 @@
     "NSCameraUsageDescription": "Nuco verwendet die Kamera nur, um den Code eines Kontakts zu scannen.",
     "NSMicrophoneUsageDescription": "Nuco verwendet das Mikrofon nur während Anrufen. Audio ist Ende zu Ende verschlüsselt.",
     "Localizable.strings": {
-      "New message": "Neue Nachricht"
+      "\"New message\"": "Neue Nachricht"
     }
   }
 }

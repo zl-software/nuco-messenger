@@ -65,6 +65,13 @@ sibling `protocol/` repo, then sync and commit the vendor copy.
 - `EXPO_PUBLIC_*` env vars are inlined at bundle time; restart Metro with `-c` to change them.
 - i18next `_one`/`_other` plural resolution needs `Intl.PluralRules`, which Hermes does not
   guarantee. Select the suffixed key by hand (see `retentionLabel` in `src/i18n/system-messages.ts`).
+- The `locales/*.json` `Localizable.strings` keys carry their own escaped quotes
+  (`"\"New message\""`): @expo/config-plugins writes strings file keys UNQUOTED, and a key
+  with a space is invalid plist syntax, which fails the Xcode build (validation failed:
+  Couldn't parse property list). If an SDK upgrade starts quoting keys itself, the build
+  will fail the same way with double quotes; drop ours then. Verify cheaply with
+  `npx expo prebuild -p ios --no-install` and read `ios/Nuco/Supporting/*/Localizable.strings`
+  (then delete the generated `ios/` dir; it is gitignored).
 
 ## Structure
 
