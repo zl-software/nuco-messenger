@@ -29,8 +29,8 @@ Why people choose Nuco:
   backup to leak or subpoena.
 - App lock: unlock with Face ID, Touch ID, or a PIN. Locking closes the encrypted database and
   drops the key from memory, so a locked phone reveals nothing.
-- Content free notifications: a notification wakes your phone to fetch messages without ever
-  sending the text or the sender through Apple.
+- Content free notifications: a generic new message banner that never sends the text or the
+  sender through Apple.
 - Private voice calls: end to end encrypted 1:1 calls, always routed through a relay so the
   person you call never learns your IP address.
 - No accounts tied to you: no phone number, no email, no real name required.
@@ -42,9 +42,13 @@ you match, and start a conversation that stays between the two of you.
 **Keywords (100 chars max, comma separated):**
 private,encrypted,messenger,secure,e2ee,signal,disappearing,messages,chat,calls,no tracking
 
-**Support URL:** REPLACE_WITH_SUPPORT_URL
+**Support URL:** https://nuco-messenger.com/support
 
-**Marketing URL (optional):** REPLACE_WITH_MARKETING_URL
+**Marketing URL (optional):** https://nuco-messenger.com
+
+**Privacy Policy URL:** https://nuco-messenger.com/privacy
+
+**Price:** 0.99 EUR tier (paid up front, no in app purchases, no subscriptions)
 
 **Primary category:** Social Networking
 

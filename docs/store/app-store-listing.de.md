@@ -30,8 +30,8 @@ Darum Nuco:
   Es gibt kein Cloud Backup, das lecken oder angefordert werden könnte.
 - App-Sperre: Entsperren mit Face ID, Touch ID oder PIN. Beim Sperren wird die verschlüsselte
   Datenbank geschlossen und der Schlüssel aus dem Speicher entfernt.
-- Inhaltsfreie Mitteilungen: Eine Mitteilung weckt dein Telefon, um Nachrichten zu holen, ohne
-  jemals Text oder Absender über Apple zu senden.
+- Inhaltsfreie Mitteilungen: ein generisches Banner für neue Nachrichten, das niemals Text
+  oder Absender über Apple sendet.
 - Private Sprachanrufe: Ende-zu-Ende verschlüsselte 1:1 Anrufe, immer über ein Relay geleitet,
   sodass dein Gegenüber nie deine IP-Adresse erfährt.
 - Keine an dich gebundenen Konten: keine Telefonnummer, keine E-Mail, kein echter Name nötig.
@@ -43,9 +43,13 @@ Person scannst, bestätige die Übereinstimmung und starte ein Gespräch, das zw
 **Schlüsselwörter (max. 100 Zeichen, kommagetrennt):**
 privat,verschlüsselt,messenger,sicher,e2ee,signal,nachrichten,chat,anrufe,ohne tracking
 
-**Support-URL:** REPLACE_WITH_SUPPORT_URL
+**Support-URL:** https://nuco-messenger.com/de/support
 
-**Marketing-URL (optional):** REPLACE_WITH_MARKETING_URL
+**Marketing-URL (optional):** https://nuco-messenger.com/de
+
+**Datenschutz-URL:** https://nuco-messenger.com/de/datenschutz
+
+**Preis:** 0,99 EUR Stufe (einmaliger Kauf, keine In-App-Käufe, keine Abos)
 
 **Primäre Kategorie:** Soziale Netzwerke
 

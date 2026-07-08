@@ -1,6 +1,6 @@
 # Nuco Privacy Policy
 
-Last updated: REPLACE_WITH_DATE
+Last updated: 8 July 2026
 
 Nuco is an end to end encrypted messenger. It is built so that we cannot read your messages,
 and so that we collect as little as possible about you. This policy explains exactly what the
@@ -43,10 +43,10 @@ decrypt anything. We do not sell, rent, or share any of this data.
 
 ## Notifications
 
-Push notifications are content free. A notification tells your device to connect and fetch
-new messages; it never carries message text or the sender's identity through the push
-provider (Apple). If you turn on message previews in Settings, previews are produced on your
-device after decryption, never by us.
+Push notifications are content free. A notification is a generic new message banner whose
+text is a fixed label localized on your device; it never carries message text or the
+sender's identity through the push provider (Apple). You can turn notifications off in
+Settings, which removes the push token from the relay.
 
 ## Camera
 
@@ -69,4 +69,4 @@ If this policy changes, we will update the date above and post the new version a
 
 ## Contact
 
-Questions about this policy: REPLACE_WITH_SUPPORT_EMAIL
+Questions about this policy: support@zlsoftware.at
