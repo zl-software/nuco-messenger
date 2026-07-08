@@ -9,6 +9,8 @@ export var ErrorCode;
     ErrorCode["NotRegistered"] = "NOT_REGISTERED";
     ErrorCode["NoSuchHandle"] = "NO_SUCH_HANDLE";
     ErrorCode["RateLimited"] = "RATE_LIMITED";
+    ErrorCode["AttestationRequired"] = "ATTESTATION_REQUIRED";
+    ErrorCode["AttestationFailed"] = "ATTESTATION_FAILED";
     ErrorCode["QueueFull"] = "QUEUE_FULL";
     ErrorCode["MessageTooLarge"] = "MESSAGE_TOO_LARGE";
     ErrorCode["CallsUnavailable"] = "CALLS_UNAVAILABLE";

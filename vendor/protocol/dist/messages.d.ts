@@ -23,12 +23,18 @@ export interface AuthenticateMsg {
     readonly type: 'authenticate';
     readonly signature: string;
 }
+export interface RegisterAttestation {
+    readonly kind: string;
+    readonly keyId: string;
+    readonly data: string;
+}
 export interface RegisterMsg {
     readonly type: 'register';
     readonly rid: string;
     readonly authKey: string;
     readonly deviceId: number;
     readonly push: PushRegistration;
+    readonly attestation?: RegisterAttestation;
 }
 export interface SendMsg {
     readonly type: 'send';

@@ -10,6 +10,9 @@ export declare const LIMITS: {
     readonly idMaxLen: 128;
     readonly apnsTopicMaxLen: 256;
     readonly pushTokenMaxLen: 4096;
+    readonly attestKindMaxLen: 32;
+    readonly attestKeyIdB64MaxLen: 64;
+    readonly attestationB64MaxLen: 24576;
 };
 export type ParseResult = {
     ok: true;

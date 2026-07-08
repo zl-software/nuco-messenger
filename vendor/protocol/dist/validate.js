@@ -27,6 +27,9 @@ export const LIMITS = {
     idMaxLen: 128,
     apnsTopicMaxLen: 256,
     pushTokenMaxLen: 4096,
+    attestKindMaxLen: 32,
+    attestKeyIdB64MaxLen: 64, // App Attest key ids are 44 chars of base64
+    attestationB64MaxLen: 24576, // real attestation objects are ~7.5 KB of base64
 };
 function isHandle(v) {
     return isNonEmptyStr(v) && v.length <= LIMITS.handleMaxLen;
@@ -52,6 +55,19 @@ function isPushRegistration(v) {
     if (v.endpoint !== undefined && !(isStr(v.endpoint) && v.endpoint.length <= LIMITS.pushTokenMaxLen))
         return false;
     if (v.apnsTopic !== undefined && !(isStr(v.apnsTopic) && v.apnsTopic.length <= LIMITS.apnsTopicMaxLen))
+        return false;
+    return true;
+}
+// Shape check only. The kind is not restricted to known values here so a future
+// attestation scheme stays a minor version; the relay decides which kinds it accepts.
+function isAttestation(v) {
+    if (!isRecord(v))
+        return false;
+    if (!isNonEmptyStr(v.kind) || v.kind.length > LIMITS.attestKindMaxLen)
+        return false;
+    if (!isNonEmptyStr(v.keyId) || v.keyId.length > LIMITS.attestKeyIdB64MaxLen || !isBase64(v.keyId))
+        return false;
+    if (!isNonEmptyStr(v.data) || v.data.length > LIMITS.attestationB64MaxLen || !isBase64(v.data))
         return false;
     return true;
 }
@@ -105,6 +121,8 @@ export function parseClientMessage(raw) {
                 return MALFORMED;
             if (!isPushRegistration(v.push))
                 return MALFORMED;
+            if (v.attestation !== undefined && !isAttestation(v.attestation))
+                return MALFORMED;
             return {
                 ok: true,
                 message: {
@@ -113,6 +131,7 @@ export function parseClientMessage(raw) {
                     authKey: v.authKey,
                     deviceId: v.deviceId,
                     push: v.push,
+                    ...(v.attestation !== undefined ? { attestation: v.attestation } : {}),
                 },
             };
         }
