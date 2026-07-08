@@ -17,7 +17,7 @@
       "bundleIdentifier": "com.zlsoftware.nuco",
       "supportsTablet": false,
       "config": {
-        "usesNonExemptEncryption": true
+        "usesNonExemptEncryption": false
       },
       "entitlements": {
         "com.apple.developer.devicecheck.appattest-environment": "production"

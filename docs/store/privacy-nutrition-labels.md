@@ -34,20 +34,25 @@ Tracking: the app does NOT track users across apps or websites owned by other co
 
 ## Encryption export compliance
 
-The app config now declares `usesNonExemptEncryption: true` (Nuco implements the Signal
-Protocol, which is more than the exempt HTTPS category). At submission App Store Connect asks a
-short export compliance flow. Draft answers:
+The app config declares `usesNonExemptEncryption: false`. Rationale, learned the hard way
+(delivery rejection ITMS-90592): in Apple's current flow, export compliance DOCUMENTATION
+(and the `ITSEncryptionExportComplianceCode` that goes with it) exists only for two cases,
+proprietary or non standard cryptography, or standard cryptography distributed in France.
+The App Store Connect API literally refuses to create a declaration otherwise. Nuco
+implements only standard algorithms (Signal Protocol: AES, Curve25519, HMAC) and v1
+excludes France from availability, so no documentation requirement applies, which is
+exactly Apple's definition of the `false` value ("only uses forms of encryption that are
+exempt from export compliance documentation requirements"). A build declaring `true`
+without a matching code is rejected at delivery.
 
-- Does your app use encryption? Yes.
-- Does your app qualify for any of the exemptions in Category 5, Part 2? Yes. Nuco uses standard
-  cryptographic algorithms and is a mass market app, so it qualifies for the exemption under
-  ECCN 5D992.c.
-- Consequences and required filings:
-  - United States: file the annual self classification report to BIS and the NSA (an email with
-    the app's classification) as required for 5D992.c mass market products.
-  - France: because the app is available in France, submit the encryption declaration to ANSSI
-    for a mass market product using cryptography.
-  - Keep a copy of these filings; App Store Connect may let you store an
-    `ITSEncryptionExportComplianceCode` afterward so future builds skip the questionnaire.
+Remaining obligations:
+
+- United States: file the annual self classification report to BIS and the NSA (an email
+  with the app's classification, ECCN 5D992.c mass market) by February 1 each year.
+- France: excluded from v1 availability. To add France later: file the ANSSI declaration,
+  then create the encryption declaration in App Store Connect (standard cryptography plus
+  available on the French store), receive the compliance code, set
+  `usesNonExemptEncryption: true` plus `ITSEncryptionExportComplianceCode` in app.json,
+  and rebuild before flipping the territory on.
 
 This is not legal advice. Confirm the current BIS and ANSSI requirements before filing.
