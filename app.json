@@ -104,7 +104,8 @@
           }
         }
       ],
-      "./modules/nuco-libsignal/app.plugin.js"
+      "./modules/nuco-libsignal/app.plugin.js",
+      "./plugins/with-relay-cert-pinning.js"
     ],
     "experiments": {
       "typedRoutes": true,

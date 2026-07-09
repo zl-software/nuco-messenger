@@ -1,13 +1,17 @@
 // Singleton relay client wiring. The app holds one connection; incoming messages are routed
 // to the messaging service, and status changes to the session store.
 
+import { Platform } from 'react-native';
+
 import { ErrorCode } from '@nuco/protocol';
 
 import { RelayClient, type RegisterParams, type RelayStatus, type WebSocketCtor } from '@/transport/relay';
 import type { MessageEnvelope } from '@nuco/protocol';
 import { useSession } from '@/state/session';
+import { getPinnedWebSocketCtor } from '../../modules/nuco-pinned-ws';
 import { attestProvider } from './attest';
 import type { Account } from './account';
+import { isPinnedRelayUrl } from './server';
 
 let client: RelayClient | null = null;
 
@@ -22,9 +26,23 @@ export function setOnRelayStatus(fn: (status: RelayStatus) => void): void {
   statusHandler = fn;
 }
 
+// The reference relay's socket goes through the URLSession based native module on iOS,
+// which puts it inside ATS so the NSPinnedDomains certificate pins apply (RN's own
+// WebSocket rides SocketRocket over raw streams, which ATS never sees). Custom relays,
+// LAN ws:// dev, and Android stay on the RN global WebSocket, unpinned by design. A dev
+// client built before the module existed degrades to the global with a warning.
+function pickWebSocketImpl(url: string): WebSocketCtor {
+  if (Platform.OS === 'ios' && isPinnedRelayUrl(url)) {
+    const pinned = getPinnedWebSocketCtor();
+    if (pinned) return pinned as unknown as WebSocketCtor;
+    if (__DEV__) console.warn('[relay] pinned websocket module unavailable, using the global WebSocket');
+  }
+  return (globalThis as unknown as { WebSocket: WebSocketCtor }).WebSocket;
+}
+
 export function startRelay(url: string, account: Account, registerOnConnect?: RegisterParams): RelayClient {
   if (client) return client;
-  const WebSocketImpl = (globalThis as unknown as { WebSocket: WebSocketCtor }).WebSocket;
+  const WebSocketImpl = pickWebSocketImpl(url);
   useSession.getState().setRegistrationError(null);
   client = new RelayClient({
     url,

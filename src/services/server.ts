@@ -47,6 +47,19 @@ export function resolveServerUrl(prefs: Prefs): string {
   return defaultServerUrl();
 }
 
+// The reference relay host whose TLS connections are certificate pinned (the pin set
+// lives in plugins/relay-pins.json, scoped to exactly this domain; see
+// docs/relay-pinning.md). Custom and LAN relays are never pinned.
+export const PINNED_RELAY_HOST = 'nuco-server.zlsoftware.at';
+
+// True only for wss:// to the reference relay host on the default port. This is the ONLY
+// traffic routed through the URLSession socket module on iOS; everything else stays on
+// the RN global WebSocket.
+export function isPinnedRelayUrl(url: string): boolean {
+  const m = /^wss:\/\/([^/:?]+)(?::443)?(?:[/?]|$)/i.exec(url.trim());
+  return m ? m[1]!.toLowerCase() === PINNED_RELAY_HOST : false;
+}
+
 // HTTP base for the health check (test connection), derived from the ws url.
 export function healthUrlFor(wsUrl: string): string {
   const httpUrl = wsUrl.replace(/^ws/, 'http');

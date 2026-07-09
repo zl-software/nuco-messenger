@@ -1,0 +1,18 @@
+{
+  "host": "nuco-server.zlsoftware.at",
+  "androidExpiration": "2028-07-01",
+  "pins": [
+    { "name": "ISRG Root X1", "spki": "C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=" },
+    { "name": "ISRG Root X2", "spki": "diGVwiVYbubAI3RW4hB9xU8e/CH2GnkuvVFZE8zmgzI=" },
+    { "name": "GTS Root R1", "spki": "hxqRlPTu1bMS/0DITB1SSu0vd4u/8l8TjPgfaAp63Gc=" },
+    { "name": "GTS Root R2", "spki": "Vfd95BwDeSQo+NUYxVEEIlvkOlWY2SalKK1lPhzOx78=" },
+    { "name": "GTS Root R3", "spki": "QXnt2YHvdHR3tJYmQIr0Paosp6t/nggsEGD4QJZ3Q0g=" },
+    { "name": "GTS Root R4", "spki": "mEflZT5enoR1FuXLgYYGqnVEoZvmf9c2bVBpiOjYQ0c=" },
+    { "name": "SSL.com Root Certification Authority RSA", "spki": "0cRTd+vc1hjNFlHcLgLCHXUeWqn80bNDH/bs9qMTSPo=" },
+    { "name": "SSL.com Root Certification Authority ECC", "spki": "oyD01TTXvpfBro3QSZc1vIlcMjrdLTiL/M9mLCPX+Zo=" },
+    { "name": "SSL.com TLS RSA Root CA 2022", "spki": "K89VOmb1cJAN3TK6bf4ezAbJGC1mLcG2Dh97dnwr3VQ=" },
+    { "name": "SSL.com TLS ECC Root CA 2022", "spki": "G/ANXI8TwJTdF+AFBM8IiIUPEv0Gf6H5LA/b9guG4yE=" },
+    { "name": "USERTrust RSA Certification Authority", "spki": "x4QzPSC810K5/cMjb05Qm4k3Bw5zBn4lTdO/nEW/Td4=" },
+    { "name": "USERTrust ECC Certification Authority", "spki": "ICGRfpgmOUXIWcQ/HXPLQTkFPEFPoDyjvH7ohhQpjzs=" }
+  ]
+}
