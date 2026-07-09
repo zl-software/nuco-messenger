@@ -99,7 +99,10 @@
     "clearConfirmTitle": "Diesen Chat leeren?",
     "clearConfirmBody": "Dies entfernt alle Nachrichten dieser Unterhaltung von diesem Gerät. Es kann nicht rückgängig gemacht werden.",
     "deleteConfirmTitle": "Diesen Chat löschen?",
-    "deleteConfirmBody": "Dies entfernt die Unterhaltung und alle ihre Nachrichten von diesem Gerät. {{name}} bleibt in deinen Kontakten. Es kann nicht rückgängig gemacht werden."
+    "deleteConfirmBody": "Dies entfernt die Unterhaltung und alle ihre Nachrichten von diesem Gerät. {{name}} bleibt in deinen Kontakten. Es kann nicht rückgängig gemacht werden.",
+    "newChatTitle": "Neuer Chat",
+    "newChatEmpty": "Noch keine verifizierten Kontakte. Füge jemanden persönlich hinzu, um einen Chat zu starten.",
+    "newChatAdd": "Neuen Kontakt hinzufügen"
   },
   "conversation": {
     "verifiedOnline": "verifiziert, online",

@@ -3,7 +3,7 @@
 // title over caption subtitle, trailing meta cluster). Reloads on focus.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -24,7 +24,7 @@ import {
 } from '@/ui';
 import { Colors, Fonts, Overlay, Radius, Spacing } from '@/constants/theme';
 import { conversationPreviews, deleteConversationMessages, type MessageKind } from '@/db/repos/messages';
-import { getContact, type Contact } from '@/db/repos/contacts';
+import { getContact, isMutuallyVerified, listContacts, type Contact } from '@/db/repos/contacts';
 import { deleteConversation, getConversation } from '@/db/repos/conversations';
 import { isDbOpen } from '@/db/client';
 import { removeChatLockSecrets } from '@/lock/chat-locks';
@@ -129,6 +129,72 @@ export default function ChatsScreen() {
     [router],
   );
 
+  // The new chat picker behind the + button: every mutually verified, non blocked contact
+  // (the only people a chat can actually start with), plus the way to add someone new.
+  const [newChatOpen, setNewChatOpen] = useState(false);
+  const [pickerContacts, setPickerContacts] = useState<Contact[]>([]);
+
+  const openNewChat = useCallback(async () => {
+    let verified: Contact[] = [];
+    try {
+      verified = (await listContacts()).filter((c) => isMutuallyVerified(c) && !c.blocked);
+    } catch {
+      // The database can close under us (lock, dev reload); the sheet still offers add.
+    }
+    setPickerContacts(verified);
+    setNewChatOpen(true);
+  }, []);
+
+  const pickContact = useCallback(
+    (id: string) => {
+      setNewChatOpen(false);
+      openChat(id);
+    },
+    [openChat],
+  );
+
+  const newChatSheet = (
+    <BottomSheet visible={newChatOpen} title={t('chats.newChatTitle')} onClose={() => setNewChatOpen(false)}>
+      {pickerContacts.length === 0 ? (
+        <Text variant="bodySecondary" color="textSecondary" style={styles.pickerEmpty}>
+          {t('chats.newChatEmpty')}
+        </Text>
+      ) : (
+        <ScrollView style={styles.pickerList} showsVerticalScrollIndicator={false}>
+          {pickerContacts.map((c) => (
+            <Pressable
+              key={c.id}
+              style={({ pressed }) => [styles.pickerRow, pressed ? styles.pickerRowPressed : null]}
+              onPress={() => pickContact(c.id)}
+            >
+              <Avatar name={c.displayName} size={48} />
+              <View style={styles.pickerText}>
+                <Text variant="rowTitle" color="text" numberOfLines={1}>
+                  {c.displayName}
+                </Text>
+                <Text variant="caption" color="textSecondary" numberOfLines={1}>
+                  {'@' + c.handle}
+                </Text>
+              </View>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
+      <Pressable
+        style={({ pressed }) => [styles.pickerAdd, pressed ? styles.pickerRowPressed : null]}
+        onPress={() => {
+          setNewChatOpen(false);
+          router.push('/add-contact');
+        }}
+      >
+        <Plus size={18} color={Colors.accent} />
+        <Text variant="label" color="accent">
+          {t('chats.newChatAdd')}
+        </Text>
+      </Pressable>
+    </BottomSheet>
+  );
+
   // Row actions (swipe or long press). Clear drops the messages but keeps the conversation
   // row (retention, screenshot, and chat lock settings survive); Delete drops the
   // conversation row too (messages cascade) plus the chat lock secrets, which live in
@@ -212,7 +278,7 @@ export default function ChatsScreen() {
       <Text variant="display" color="text">
         {t('chats.title')}
       </Text>
-      <Pressable style={[styles.iconBtn, styles.composeBtn]} onPress={() => router.push('/add-contact')} hitSlop={8}>
+      <Pressable style={[styles.iconBtn, styles.composeBtn]} onPress={() => void openNewChat()} hitSlop={8}>
         <Plus size={20} color={Colors.accentInk} />
       </Pressable>
     </View>
@@ -249,6 +315,9 @@ export default function ChatsScreen() {
           </Text>
           <Button label={t('chats.emptyCta')} onPress={() => router.push('/add-contact')} style={styles.emptyCta} />
         </View>
+        {/* The early return skips the main branch, so the + button's sheet must render
+            here too or it would silently do nothing on the empty screen. */}
+        {newChatSheet}
       </Screen>
     );
   }
@@ -351,6 +420,8 @@ export default function ChatsScreen() {
           </Pressable>
         </View>
       </BottomSheet>
+
+      {newChatSheet}
     </Screen>
   );
 }
@@ -435,5 +506,23 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.lg,
     borderBottomWidth: 1,
     borderBottomColor: Overlay.hairlineSoft,
+  },
+  pickerList: { maxHeight: 360 },
+  pickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingVertical: 11,
+  },
+  pickerRowPressed: { opacity: 0.6 },
+  pickerText: { flex: 1, gap: 2 },
+  pickerEmpty: { paddingVertical: Spacing.md },
+  pickerAdd: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: Overlay.hairlineSoft,
   },
 });

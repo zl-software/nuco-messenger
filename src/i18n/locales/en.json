@@ -99,7 +99,10 @@
     "clearConfirmTitle": "Clear this chat?",
     "clearConfirmBody": "This removes every message in this conversation from this device. It cannot be undone.",
     "deleteConfirmTitle": "Delete this chat?",
-    "deleteConfirmBody": "This removes the conversation and all its messages from this device. {{name}} stays in your contacts. It cannot be undone."
+    "deleteConfirmBody": "This removes the conversation and all its messages from this device. {{name}} stays in your contacts. It cannot be undone.",
+    "newChatTitle": "New chat",
+    "newChatEmpty": "No verified contacts yet. Add someone in person to start a chat.",
+    "newChatAdd": "Add a new contact"
   },
   "conversation": {
     "verifiedOnline": "verified, online",
