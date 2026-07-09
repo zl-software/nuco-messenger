@@ -389,7 +389,9 @@
   },
   "system": {
     "verified": "Ihr habt euch gegenseitig verifiziert. Nachrichten sind freigeschaltet.",
-    "nameChanged": "{{oldName}} heißt jetzt {{newName}}."
+    "nameChanged": "{{oldName}} heißt jetzt {{newName}}.",
+    "identityChanged": "Der Sicherheitscode von {{name}} hat sich geändert. Verifiziert euch wieder persönlich, bevor ihr schreibt.",
+    "securityUpgrade": "Nuco wurde auf Post-Quanten-Verschlüsselung aktualisiert. Scannt gegenseitig eure QR-Codes erneut, um euch zu verifizieren."
   },
   "settings": {
     "title": "Einstellungen",

@@ -8,6 +8,7 @@ import { initCallService } from './calls';
 import { emitConversationsChanged } from './data-events';
 import { receiveEnvelope, resendPendingOutbound } from './messaging';
 import { resendPendingNameSyncs } from './profile';
+import { migrateSignalStateIfNeeded } from './signal-migration';
 import { initVerificationService, resendPendingConfirms } from './verification';
 import { startExpirySweeper } from './expiry';
 import { resolveServerUrl } from './server';
@@ -50,6 +51,9 @@ export async function goOnlineFirstRun(account: Account): Promise<void> {
 
 // Returning user, after unlock.
 export async function bringOnline(): Promise<void> {
+  // Before anything reads the account or the relay is wired: a pre libsignal-swap
+  // install gets its Signal state regenerated (break clean migration, see the service).
+  await migrateSignalStateIfNeeded();
   const account = await loadAccount();
   if (!account) return;
   useSession.getState().setAccount(account);

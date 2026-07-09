@@ -6,7 +6,14 @@
 import * as Crypto from 'expo-crypto';
 
 import { encodeContent, decodeContent, type MessageContent, type MessageEnvelope } from '@nuco/protocol';
-import { getContactByHandle, isMutuallyVerified, setDisplayName as setContactDisplayName, type Contact } from '@/db/repos/contacts';
+import { IdentityChangedError } from '@/crypto';
+import {
+  getContactByHandle,
+  isMutuallyVerified,
+  resetVerification,
+  setDisplayName as setContactDisplayName,
+  type Contact,
+} from '@/db/repos/contacts';
 import {
   ensureConversation,
   getConversation,
@@ -64,6 +71,13 @@ type DeferredFlusher = (contact: Contact) => Promise<void>;
 let deferredFlusher: DeferredFlusher = async () => undefined;
 export function setDeferredFlusher(fn: DeferredFlusher): void {
   deferredFlusher = fn;
+}
+// Clears the verification service's per run confirm bookkeeping when a peer's identity
+// changes (same setter pattern; the reset itself lives in handleIdentityChange below).
+type IdentityResetHandler = (handle: string) => void;
+let identityResetHandler: IdentityResetHandler = () => undefined;
+export function setIdentityResetHandler(fn: IdentityResetHandler): void {
+  identityResetHandler = fn;
 }
 
 // A retention negotiation event logged in the timeline. The direction carries the actor
@@ -468,7 +482,24 @@ async function doReceiveEnvelope(from: string, envelope: MessageEnvelope): Promi
       relay?.ack(envelope.id);
       return null;
     }
-    const plaintext = await getSignal().decrypt(from, { ciphertext: envelope.ciphertext, messageType: envelope.messageType });
+    let plaintext: Uint8Array;
+    try {
+      plaintext = await getSignal().decrypt(from, { ciphertext: envelope.ciphertext, messageType: envelope.messageType });
+    } catch (err) {
+      if (err instanceof IdentityChangedError) {
+        // The sender's identity key is not the pinned one: the peer re-onboarded (or
+        // worse). Nothing was decrypted or persisted. Reset verification exactly like a
+        // changed key re-scan does, log the security note, and ACK: the content was
+        // produced by an unverified new identity, so even decrypted it would be gated
+        // and dropped, and leaving it unacked would redeliver it forever. After the
+        // reset the pin is gone, so the peer's NEXT prekey message establishes a fresh
+        // session on trust of first use; messaging stays locked until both re-verify.
+        await handleIdentityChange(contact, envelope);
+        relay?.ack(envelope.id);
+        return contact.id;
+      }
+      throw err;
+    }
     const content = decodeContent(plaintext);
     const now = Date.now();
 
@@ -670,4 +701,30 @@ async function doReceiveEnvelope(from: string, envelope: MessageEnvelope): Promi
     // Leave unacked so the relay redelivers; the decryption may succeed after a session repair.
     return null;
   }
+}
+
+// A peer's identity key changed. Mirrors the scan time reset in contacts.ts: both
+// confirms and the stored card prekeys are cleared (they bound the old identity), the
+// per run confirm state is forgotten, and the stale ratchet plus the old pin are
+// dropped. The system note uses the envelope id, so a redelivery racing the ack is an
+// INSERT OR IGNORE no-op; envelopes decrypted after the reset flow through the normal
+// path and are silently gated (the pair is unverified now), so the note appears once.
+async function handleIdentityChange(contact: Contact, envelope: MessageEnvelope): Promise<void> {
+  await resetVerification(contact.id);
+  identityResetHandler(contact.handle);
+  await getSignal().deleteSession(contact.handle);
+  const now = Date.now();
+  const convo = (await getConversation(contact.id)) ?? (await ensureConversation(contact.id, contact.id, 86400, now));
+  await insertSystemMessage({
+    id: envelope.id,
+    conversationId: contact.id,
+    kind: 'identity/changed',
+    direction: 'in',
+    value: null,
+    retentionSeconds: convo.retentionSeconds,
+    sentAt: envelope.sentAt || now,
+    expiryFrom: now,
+    read: false,
+  });
+  emitConversationsChanged(contact.id);
 }

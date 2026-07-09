@@ -35,7 +35,14 @@ export type MessageKind =
   // The peer renamed themselves (receiver side only). The body is a JSON string
   // {"old":..,"new":..} carrying both names, so the note still reads correctly after
   // later renames; the row id is the envelope id (redelivery is an INSERT OR IGNORE no-op).
-  | 'name/changed';
+  | 'name/changed'
+  // The peer's identity key changed (receiver side only): a prekey message arrived under
+  // a different identity than the pinned one, verification was reset, and messaging stays
+  // locked until both people re-scan. The row id is the triggering envelope id.
+  | 'identity/changed'
+  // Written once per conversation by the break clean migration to native libsignal
+  // (PQXDH): the local identity was regenerated, every pair must re-scan and re-verify.
+  | 'security/upgrade';
 
 export interface Message {
   id: string;

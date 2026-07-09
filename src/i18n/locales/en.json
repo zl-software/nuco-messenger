@@ -389,7 +389,9 @@
   },
   "system": {
     "verified": "You verified each other. Messages are unlocked.",
-    "nameChanged": "{{oldName}} changed their name to {{newName}}."
+    "nameChanged": "{{oldName}} changed their name to {{newName}}.",
+    "identityChanged": "{{name}}'s security code changed. Verify each other in person again before messaging.",
+    "securityUpgrade": "Nuco upgraded to post-quantum encryption. Scan each other's QR codes again to verify."
   },
   "settings": {
     "title": "Settings",

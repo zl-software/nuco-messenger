@@ -21,6 +21,7 @@ import {
   insertVerifiedSystemRow,
   setConfirmHandler,
   setDeferredFlusher,
+  setIdentityResetHandler,
 } from './messaging';
 import { isUnlocked } from '@/lock/lock-controller';
 import {
@@ -64,6 +65,10 @@ export function forgetConfirmState(handle: string): void {
 export function initVerificationService(): void {
   setConfirmHandler(handleInboundConfirm);
   setDeferredFlusher(flushDeferredConfirm);
+  // An identity change resets verification inside messaging; the per run confirm
+  // bookkeeping here must reset with it or a stale once-per-run guard would swallow the
+  // first confirm of the re-verified pairing.
+  setIdentityResetHandler(forgetConfirmState);
 }
 
 // The SAS press: record our confirmation and send the proof. For a responder without a

@@ -77,7 +77,9 @@ export type SystemMessageI18nKey =
   | 'call.rowDeclinedOut'
   | 'call.rowFailed'
   | 'system.verified'
-  | 'system.nameChanged';
+  | 'system.nameChanged'
+  | 'system.identityChanged'
+  | 'system.securityUpgrade';
 
 // The i18n key for a system message row. The caller interpolates { name, value, duration }.
 // Turning the timer off has dedicated keys so the copy never reads "disappear after Off".
@@ -129,6 +131,10 @@ export function systemMessageKey(
       return 'system.verified';
     case 'name/changed':
       return 'system.nameChanged';
+    case 'identity/changed':
+      return 'system.identityChanged';
+    case 'security/upgrade':
+      return 'system.securityUpgrade';
   }
 }
 
