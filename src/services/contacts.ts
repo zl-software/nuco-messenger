@@ -7,7 +7,13 @@
 
 import * as Crypto from 'expo-crypto';
 
-import { CONTACT_CARD_VERSION, isContactCard, type ContactCard } from '@nuco/protocol';
+import {
+  CONTACT_CARD_VERSION,
+  CARD_QR_PREFIX,
+  decodeContactCardQr,
+  encodeContactCardQr,
+  type ContactCard,
+} from '@nuco/protocol';
 import { isSessionInitiator } from '@/crypto/verification';
 import { getSignal, loadAccount, type Account } from './account';
 import { reconnectRelay } from './boot';
@@ -23,6 +29,7 @@ export type ScanOutcome =
   | { kind: 'added'; contact: Contact; alreadyExisted: boolean }
   | { kind: 'invalid' }
   | { kind: 'notNuco' }
+  | { kind: 'incompatibleCard' }
   | { kind: 'self' }
   | { kind: 'wrongServer'; cardServer: string; localServer: string }
   | { kind: 'maybeWrongServer'; localServer: string };
@@ -37,22 +44,40 @@ export function buildContactCard(account: Account, serverUrl: string): ContactCa
     identityKey: account.identityKeyB64,
     registrationId: account.registrationId,
     signedPreKey: account.signedPreKey,
-    fingerprint: formatFingerprint(account.identityKeyB64),
+    kyberPreKey: account.kyberPreKey,
     displayName: account.displayName,
     server: serverUrl,
   };
 }
 
-export function parseScannedCode(data: string): ContactCard | 'invalid' | 'notNuco' {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(data);
-  } catch {
-    return 'notNuco';
+// The string rendered into the QR code (card v4: CBOR in base45 with the NC4: prefix).
+export function buildContactCardQr(account: Account, serverUrl: string): string {
+  return encodeContactCardQr(buildContactCard(account, serverUrl));
+}
+
+export function parseScannedCode(data: string): ContactCard | 'invalid' | 'notNuco' | 'incompatibleCard' {
+  const trimmed = data.trim();
+  if (trimmed.startsWith(CARD_QR_PREFIX)) {
+    const card = decodeContactCardQr(trimmed);
+    return card ?? 'invalid';
   }
-  if (!isContactCard(parsed)) return 'notNuco';
-  if (!parsed.handle || !parsed.identityKey) return 'invalid';
-  return parsed;
+  // A pre 3.0 card was plain JSON: recognizably Nuco, but the peer must update before
+  // the pair can scan each other (major 3 is a breaking cut).
+  try {
+    const parsed = JSON.parse(trimmed) as { v?: unknown; handle?: unknown; identityKey?: unknown };
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      typeof parsed.v === 'number' &&
+      typeof parsed.handle === 'string' &&
+      typeof parsed.identityKey === 'string'
+    ) {
+      return 'incompatibleCard';
+    }
+  } catch {
+    // fall through
+  }
+  return 'notNuco';
 }
 
 // Add a contact from a scanned card. Fully offline: the card carries everything X3DH
@@ -87,22 +112,28 @@ export async function addContactFromCard(
 
   const existing = await getContactByHandle(card.handle);
   // A re-scan showing a different identity key means the peer re-onboarded (or worse).
-  // The old confirms bound the old key, so verification restarts from zero. Proper key
-  // change surfacing is deferred to the native libsignal swap.
+  // The old confirms bound the old key, so verification restarts from zero, and the old
+  // session plus pinned identity must go FIRST: a stale ratchet under the old key would
+  // poison the new pairing, and the decrypt path pins by trust on first use afterward.
   const identityChanged = existing != null && existing.identityPubkey !== card.identityKey;
   const now = Date.now();
 
-  // Deterministic initiator: only the byte smaller identity key runs X3DH. The other side
-  // becomes the responder when the initiator's first sealed (prekey) message arrives, so
-  // mutual scanning never creates two racing sessions. processPreKey also validates the
-  // card's signed prekey signature against its identity key.
+  // Deterministic initiator: only the byte smaller identity key runs PQXDH. The other
+  // side becomes the responder when the initiator's first sealed (prekey) message
+  // arrives, so mutual scanning never creates two racing sessions. processPreKeyBundle
+  // also validates the card's prekey signatures against its identity key.
   try {
+    if (identityChanged) {
+      await getSignal().deleteSession(card.handle);
+      forgetConfirmState(card.handle);
+    }
     if (isSessionInitiator(account.identityKeyB64, card.identityKey)) {
       if (identityChanged || !(await getSignal().hasSession(card.handle))) {
         await getSignal().startSession(card.handle, {
           identityKey: card.identityKey,
           registrationId: card.registrationId,
           signedPreKey: card.signedPreKey,
+          kyberPreKey: card.kyberPreKey,
         });
       }
     }
@@ -115,13 +146,14 @@ export async function addContactFromCard(
     handle: card.handle,
     displayName: card.displayName || card.handle,
     identityPubkey: card.identityKey,
-    fingerprint: card.fingerprint,
+    fingerprint: formatFingerprint(card.identityKey),
     safetyNumber: identityChanged ? null : (existing?.safetyNumber ?? null),
     status: identityChanged ? 'connected' : (existing?.status ?? 'connected'),
     verifiedAt: identityChanged ? null : (existing?.verifiedAt ?? null),
     localConfirmedAt: identityChanged ? null : (existing?.localConfirmedAt ?? null),
     peerConfirmedAt: identityChanged ? null : (existing?.peerConfirmedAt ?? null),
     cardSpkPub: card.signedPreKey.publicKey,
+    cardKyberPub: card.kyberPreKey.publicKey,
     blocked: existing?.blocked ?? false,
     muted: existing?.muted ?? false,
     nameSyncPending: existing?.nameSyncPending ?? false,

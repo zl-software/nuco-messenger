@@ -328,6 +328,8 @@
     "tryAgain": "Erneut versuchen",
     "notNucoTitle": "Das ist kein Nuco-Code",
     "notNucoBody": "Dieser QR ist ein gültiger Code, aber keine Nuco-Identität.",
+    "incompatibleTitle": "Dieser Code stammt aus einer älteren Nuco-Version",
+    "incompatibleBody": "Dein Kontakt muss Nuco erst aktualisieren, bevor ihr euch hinzufügen könnt. Die App zeigt danach einen neuen Code.",
     "scanNuco": "Einen Nuco-Code scannen",
     "selfTitle": "Das ist dein eigener Code",
     "selfBody": "Du kannst dich nicht selbst als Kontakt hinzufügen. Scanne stattdessen den Code einer anderen Person.",

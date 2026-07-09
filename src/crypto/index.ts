@@ -1,21 +1,33 @@
-// Public surface of the crypto layer. UI and feature code import from here, never from the
-// Signal library directly, so the unaudited dependency stays behind this boundary.
+// Public surface of the crypto layer. UI and feature code import from here, never from
+// libsignal (native module or Node binding) directly, so the cipher stays behind this
+// boundary and the backend seam remains swappable.
 
-export { NucoSignal, type SealedMessage, type SessionBootstrap, type VerificationStrings } from './signal';
+export {
+  NucoSignal,
+  IdentityChangedError,
+  type SealedMessage,
+  type SessionBootstrap,
+  type VerificationStrings,
+} from './signal';
 export {
   generateIdentity,
   generateSignedPreKey,
+  generateKyberPreKey,
   installIdentity,
   toSignedPreKeyPublic,
+  toKyberPreKeyPublic,
   identityPublicKeyBase64,
   authPublicKeyBase64,
   signChallenge,
+  SIGNED_PREKEY_ID,
+  KYBER_PREKEY_ID,
   type IdentityMaterial,
   type AuthKeyPair,
+  type GeneratedPreKeyWithId,
 } from './identity';
-export { NucoSignalStore, InMemoryKvBackend, type KvBackend } from './store';
-export { computeSafetyNumber, formatSafetyNumber } from './safety-number';
+export { NucoSignalStore, InMemoryKvBackend, STORE_FORMAT_NATIVE, type KvBackend } from './store';
+export type { LibsignalBackend } from './backend';
+export { formatSafetyNumber } from './safety-number';
 export { computeEmojiSas, SAS_EMOJI, type SasEmoji } from './sas';
 export { computeCardHash, isSessionInitiator, type CardCore } from './verification';
-export { installCryptoProvider } from './provider';
 export * as bytes from './bytes';

@@ -101,6 +101,7 @@ export async function handleInboundConfirm(
     handle: account.handle,
     identityKey: account.identityKeyB64,
     signedPreKey: { publicKey: account.signedPreKey.publicKey },
+    kyberPreKey: { publicKey: account.kyberPreKey.publicKey },
   });
   if (cardHash !== ownHash) return;
   if (contact.peerConfirmedAt != null) {
@@ -152,9 +153,10 @@ export async function flushDeferredConfirm(contact: Contact): Promise<void> {
 }
 
 async function sendConfirm(contact: Contact): Promise<void> {
-  // cardSpkPub is the peer's signed prekey public key from their scanned card; without it
-  // (a pre 2.0 row) no proof can be computed and the pair must re-scan.
-  if (sentThisRun.has(contact.handle) || contact.cardSpkPub == null) return;
+  // cardSpkPub and cardKyberPub are the peer's prekey public keys from their scanned
+  // card; without both (a pre 3.0 row) no proof can be computed and the pair must
+  // re-scan.
+  if (sentThisRun.has(contact.handle) || contact.cardSpkPub == null || contact.cardKyberPub == null) return;
   sentThisRun.add(contact.handle);
   try {
     await sendContent(
@@ -165,6 +167,7 @@ async function sendConfirm(contact: Contact): Promise<void> {
           handle: contact.handle,
           identityKey: contact.identityPubkey,
           signedPreKey: { publicKey: contact.cardSpkPub },
+          kyberPreKey: { publicKey: contact.cardKyberPub },
         }),
       },
       Crypto.randomUUID(),

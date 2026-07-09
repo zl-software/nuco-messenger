@@ -19,6 +19,7 @@ export interface Contact {
   localConfirmedAt: number | null;
   peerConfirmedAt: number | null;
   cardSpkPub: string | null;
+  cardKyberPub: string | null;
   blocked: boolean;
   muted: boolean;
   nameSyncPending: boolean;
@@ -37,6 +38,7 @@ interface ContactRow {
   local_confirmed_at: number | null;
   peer_confirmed_at: number | null;
   card_spk_pub: string | null;
+  card_kyber_pub: string | null;
   blocked: number;
   muted: number;
   name_sync_pending: number;
@@ -56,6 +58,7 @@ function toContact(r: ContactRow): Contact {
     localConfirmedAt: r.local_confirmed_at,
     peerConfirmedAt: r.peer_confirmed_at,
     cardSpkPub: r.card_spk_pub,
+    cardKyberPub: r.card_kyber_pub,
     blocked: r.blocked === 1,
     muted: r.muted === 1,
     nameSyncPending: r.name_sync_pending === 1,
@@ -87,14 +90,15 @@ export async function getContactByHandle(handle: string): Promise<Contact | null
 export async function upsertContact(c: Contact): Promise<void> {
   await getDb().execute(
     `INSERT INTO contacts (id, handle, display_name, identity_pubkey, fingerprint, safety_number, status, verified_at,
-                           local_confirmed_at, peer_confirmed_at, card_spk_pub, blocked, muted, name_sync_pending, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           local_confirmed_at, peer_confirmed_at, card_spk_pub, card_kyber_pub, blocked, muted,
+                           name_sync_pending, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        handle = excluded.handle, display_name = excluded.display_name, identity_pubkey = excluded.identity_pubkey,
        fingerprint = excluded.fingerprint, safety_number = excluded.safety_number, status = excluded.status,
        verified_at = excluded.verified_at, local_confirmed_at = excluded.local_confirmed_at,
        peer_confirmed_at = excluded.peer_confirmed_at, card_spk_pub = excluded.card_spk_pub,
-       blocked = excluded.blocked, muted = excluded.muted`,
+       card_kyber_pub = excluded.card_kyber_pub, blocked = excluded.blocked, muted = excluded.muted`,
     [
       c.id,
       c.handle,
@@ -107,11 +111,34 @@ export async function upsertContact(c: Contact): Promise<void> {
       c.localConfirmedAt,
       c.peerConfirmedAt,
       c.cardSpkPub,
+      c.cardKyberPub,
       c.blocked ? 1 : 0,
       c.muted ? 1 : 0,
       c.nameSyncPending ? 1 : 0,
       c.createdAt,
     ],
+  );
+}
+
+// Reset a contact's verification to zero, mirroring what a re-scan with a changed
+// identity does: both confirms, the safety number, and the stored card prekeys are
+// cleared (they bound the OLD identity). The identity_pubkey itself stays as the last
+// known key; the receive path pins the new one on trust of first use after the reset.
+export async function resetVerification(id: string): Promise<void> {
+  await getDb().execute(
+    `UPDATE contacts SET safety_number = NULL, status = 'connected', verified_at = NULL,
+       local_confirmed_at = NULL, peer_confirmed_at = NULL, card_spk_pub = NULL, card_kyber_pub = NULL
+     WHERE id = ?`,
+    [id],
+  );
+}
+
+// The break clean migration resets every contact at once (the old confirms all bound
+// identities that no longer exist).
+export async function resetAllVerification(): Promise<void> {
+  await getDb().execute(
+    `UPDATE contacts SET safety_number = NULL, status = 'connected', verified_at = NULL,
+       local_confirmed_at = NULL, peer_confirmed_at = NULL, card_spk_pub = NULL, card_kyber_pub = NULL`,
   );
 }
 

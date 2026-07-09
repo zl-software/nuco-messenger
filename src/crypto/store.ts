@@ -1,11 +1,11 @@
-// The Signal protocol store. It implements the library's StorageType over a small async
-// key value backend so the same logic runs over an in memory map (Node and tests) or the
-// app's encrypted SQLCipher database (Hermes). Identity and session state are sensitive
-// and only ever live inside the encrypted database, never in plaintext storage.
+// The Signal record store: typed accessors over a small async key value backend, so the
+// same logic runs over an in memory map (Node and tests) or the app's encrypted SQLCipher
+// database (Hermes). Values are libsignal's serialized protobuf records as base64 (store
+// format 2; format 1 was the retired JS port's JSON records, detected and wiped by the
+// break clean migration). Identity and session state are sensitive and only ever live
+// inside the encrypted database, never in plaintext storage.
 
-import type { KeyPairType, StorageType, Direction } from '@privacyresearch/libsignal-protocol-typescript';
-
-import { abToBase64, base64ToAb } from './bytes';
+import type { KeyPairB64 } from './backend';
 
 // A namespaced async string store. Implementations: InMemoryKvBackend (tests / Node) and
 // the op-sqlite backed backend in the app db layer.
@@ -13,6 +13,7 @@ export interface KvBackend {
   get(key: string): Promise<string | null>;
   set(key: string, value: string): Promise<void>;
   remove(key: string): Promise<void>;
+  wipeAll(): Promise<void>;
 }
 
 export class InMemoryKvBackend implements KvBackend {
@@ -26,105 +27,106 @@ export class InMemoryKvBackend implements KvBackend {
   async remove(key: string): Promise<void> {
     this.map.delete(key);
   }
+  async wipeAll(): Promise<void> {
+    this.map.clear();
+  }
 }
 
-interface SerializedKeyPair {
-  pub: string;
-  priv: string;
-}
-
-function serializeKeyPair(kp: KeyPairType): string {
-  const out: SerializedKeyPair = { pub: abToBase64(kp.pubKey), priv: abToBase64(kp.privKey) };
-  return JSON.stringify(out);
-}
-function deserializeKeyPair(s: string): KeyPairType {
-  const o = JSON.parse(s) as SerializedKeyPair;
-  return { pubKey: base64ToAb(o.pub), privKey: base64ToAb(o.priv) };
-}
+// The marker distinguishing native libsignal records from the retired JS port's JSON
+// records: idkeypair present without it means a pre swap store.
+export const STORE_FORMAT_NATIVE = '2';
 
 const K = {
   identityKeyPair: 'idkeypair',
   registrationId: 'regid',
-  preKey: (id: string | number) => `prekey:${id}`,
-  signedPreKey: (id: string | number) => `signedprekey:${id}`,
-  session: (addr: string) => `session:${addr}`,
-  identity: (id: string) => `identity:${id}`,
+  localHandle: 'localhandle',
+  storeFormat: 'storefmt',
+  signedPreKey: (id: number) => `signedprekey:${id}`,
+  kyberPreKey: (id: number) => `kyberprekey:${id}`,
+  session: (handle: string) => `session:${handle}.1`,
+  identity: (handle: string) => `identity:${handle}`,
 };
 
-export class NucoSignalStore implements StorageType {
+export class NucoSignalStore {
   constructor(private readonly kv: KvBackend) {}
 
-  // --- one time provisioning helpers (not part of StorageType) ---
+  // --- provisioning ---
 
-  async setIdentityKeyPair(kp: KeyPairType): Promise<void> {
-    await this.kv.set(K.identityKeyPair, serializeKeyPair(kp));
+  async setIdentityKeyPair(pair: KeyPairB64): Promise<void> {
+    await this.kv.set(K.identityKeyPair, JSON.stringify({ pub: pair.publicKey, priv: pair.privateKey }));
   }
+  async getIdentityKeyPair(): Promise<KeyPairB64 | null> {
+    const raw = await this.kv.get(K.identityKeyPair);
+    if (raw === null) return null;
+    const parsed = JSON.parse(raw) as { pub: string; priv: string };
+    return { publicKey: parsed.pub, privateKey: parsed.priv };
+  }
+
   async setLocalRegistrationId(id: number): Promise<void> {
     await this.kv.set(K.registrationId, String(id));
   }
-
-  // --- StorageType ---
-
-  async getIdentityKeyPair(): Promise<KeyPairType | undefined> {
-    const s = await this.kv.get(K.identityKeyPair);
-    return s ? deserializeKeyPair(s) : undefined;
+  async getLocalRegistrationId(): Promise<number | null> {
+    const raw = await this.kv.get(K.registrationId);
+    return raw === null ? null : Number(raw);
   }
 
-  async getLocalRegistrationId(): Promise<number | undefined> {
-    const s = await this.kv.get(K.registrationId);
-    return s === null ? undefined : Number(s);
+  async setLocalHandle(handle: string): Promise<void> {
+    await this.kv.set(K.localHandle, handle);
+  }
+  async getLocalHandle(): Promise<string | null> {
+    return this.kv.get(K.localHandle);
   }
 
-  async isTrustedIdentity(identifier: string, identityKey: ArrayBuffer, _direction: Direction): Promise<boolean> {
-    const known = await this.kv.get(K.identity(identifier));
-    if (known === null) return true; // trust on first use; verification is enforced above the cipher
-    return known === abToBase64(identityKey);
+  async setStoreFormat(format: string): Promise<void> {
+    await this.kv.set(K.storeFormat, format);
+  }
+  async getStoreFormat(): Promise<string | null> {
+    return this.kv.get(K.storeFormat);
   }
 
-  async saveIdentity(encodedAddress: string, publicKey: ArrayBuffer): Promise<boolean> {
-    const identifier = encodedAddress.split('.')[0] ?? encodedAddress;
-    const incoming = abToBase64(publicKey);
-    const existing = await this.kv.get(K.identity(identifier));
-    await this.kv.set(K.identity(identifier), incoming);
-    // Returns true when an existing identity was replaced by a different key.
-    return existing !== null && existing !== incoming;
+  // --- prekey records (exactly one of each exists, see identity.ts) ---
+
+  async storeSignedPreKey(keyId: number, record: string): Promise<void> {
+    await this.kv.set(K.signedPreKey(keyId), record);
+  }
+  async loadSignedPreKey(keyId: number): Promise<string | null> {
+    return this.kv.get(K.signedPreKey(keyId));
   }
 
-  async loadPreKey(keyId: string | number): Promise<KeyPairType | undefined> {
-    const s = await this.kv.get(K.preKey(keyId));
-    return s ? deserializeKeyPair(s) : undefined;
+  async storeKyberPreKey(keyId: number, record: string): Promise<void> {
+    await this.kv.set(K.kyberPreKey(keyId), record);
   }
-  async storePreKey(keyId: string | number, keyPair: KeyPairType): Promise<void> {
-    await this.kv.set(K.preKey(keyId), serializeKeyPair(keyPair));
-  }
-  async removePreKey(keyId: string | number): Promise<void> {
-    await this.kv.remove(K.preKey(keyId));
+  async loadKyberPreKey(keyId: number): Promise<string | null> {
+    return this.kv.get(K.kyberPreKey(keyId));
   }
 
-  async storeSession(encodedAddress: string, record: string): Promise<void> {
-    await this.kv.set(K.session(encodedAddress), record);
+  // --- sessions ---
+
+  async storeSession(handle: string, record: string): Promise<void> {
+    await this.kv.set(K.session(handle), record);
   }
-  async loadSession(encodedAddress: string): Promise<string | undefined> {
-    const s = await this.kv.get(K.session(encodedAddress));
-    return s === null ? undefined : s;
+  async loadSession(handle: string): Promise<string | null> {
+    return this.kv.get(K.session(handle));
   }
-  // Not part of StorageType: contact deletion forgets the peer's ratchet and pinned
-  // identity so a later re-add starts from a clean X3DH like a first scan.
-  async removeSession(encodedAddress: string): Promise<void> {
-    await this.kv.remove(K.session(encodedAddress));
-  }
-  async removeIdentity(identifier: string): Promise<void> {
-    await this.kv.remove(K.identity(identifier));
+  async removeSession(handle: string): Promise<void> {
+    await this.kv.remove(K.session(handle));
   }
 
-  async loadSignedPreKey(keyId: string | number): Promise<KeyPairType | undefined> {
-    const s = await this.kv.get(K.signedPreKey(keyId));
-    return s ? deserializeKeyPair(s) : undefined;
+  // --- pinned peer identities (the trust anchor the decrypt path compares against) ---
+
+  async pinIdentity(handle: string, identityKeyB64: string): Promise<void> {
+    await this.kv.set(K.identity(handle), identityKeyB64);
   }
-  async storeSignedPreKey(keyId: string | number, keyPair: KeyPairType): Promise<void> {
-    await this.kv.set(K.signedPreKey(keyId), serializeKeyPair(keyPair));
+  async getPinnedIdentity(handle: string): Promise<string | null> {
+    return this.kv.get(K.identity(handle));
   }
-  async removeSignedPreKey(keyId: string | number): Promise<void> {
-    await this.kv.remove(K.signedPreKey(keyId));
+  async removeIdentity(handle: string): Promise<void> {
+    await this.kv.remove(K.identity(handle));
+  }
+
+  // --- break clean migration ---
+
+  async wipeAll(): Promise<void> {
+    await this.kv.wipeAll();
   }
 }

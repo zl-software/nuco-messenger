@@ -7,7 +7,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Button, Card, Close, QrCard, Screen, SegmentedControl, Text, VerifiedShield } from '@/ui';
 import { useSession } from '@/state/session';
 import { useSettings } from '@/state/settings';
-import { addContactFromCard, buildContactCard, parseScannedCode, type ScanOutcome } from '@/services/contacts';
+import { addContactFromCard, buildContactCard, buildContactCardQr, parseScannedCode, type ScanOutcome } from '@/services/contacts';
 import { resolveServerUrl } from '@/services/server';
 import { type ContactCard } from '@nuco/protocol';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -17,13 +17,14 @@ type Mode = 'show' | 'scan';
 // The only relay related outcome is the server mismatch pair: handles are namespaced per
 // relay, so a pair on different relays could never deliver a message.
 type ScanError =
-  | { kind: 'invalid' | 'notNuco' | 'self' }
+  | { kind: 'invalid' | 'notNuco' | 'incompatibleCard' | 'self' }
   | { kind: 'wrongServer'; cardServer: string; localServer: string }
   | { kind: 'maybeWrongServer'; localServer: string };
 
 const SCAN_ERROR_COPY = {
   invalid: { tone: 'danger', title: 'addContact.invalidTitle', body: 'addContact.invalidBody', cta: 'addContact.tryAgain' },
   notNuco: { tone: 'warning', title: 'addContact.notNucoTitle', body: 'addContact.notNucoBody', cta: 'addContact.scanNuco' },
+  incompatibleCard: { tone: 'warning', title: 'addContact.incompatibleTitle', body: 'addContact.incompatibleBody', cta: 'addContact.tryAgain' },
   self: { tone: 'warning', title: 'addContact.selfTitle', body: 'addContact.selfBody', cta: 'addContact.tryAgain' },
   wrongServer: { tone: 'danger', title: 'addContact.wrongServerTitle', body: 'addContact.wrongServerBody', cta: 'addContact.tryAgain' },
   maybeWrongServer: { tone: 'warning', title: 'addContact.maybeWrongServerTitle', body: 'addContact.maybeWrongServerBody', cta: 'addContact.tryAgain' },
@@ -69,7 +70,10 @@ export default function AddContactScreen() {
       </View>
 
       {mode === 'show' ? (
-        <ShowCode card={account ? buildContactCard(account, serverUrl) : null} />
+        <ShowCode
+          card={account ? buildContactCard(account, serverUrl) : null}
+          qrValue={account ? buildContactCardQr(account, serverUrl) : null}
+        />
       ) : (
         <ScanCode
           onAdded={(id) => router.replace({ pathname: '/verify/[id]', params: { id, from: 'scan' } })}
@@ -80,12 +84,12 @@ export default function AddContactScreen() {
   );
 }
 
-function ShowCode({ card }: { card: ContactCard | null }) {
+function ShowCode({ card, qrValue }: { card: ContactCard | null; qrValue: string | null }) {
   const { t } = useTranslation();
-  if (!card) return null;
+  if (!card || !qrValue) return null;
   return (
     <View style={styles.showWrap}>
-      <QrCard value={JSON.stringify(card)} />
+      <QrCard value={qrValue} />
       <View style={styles.identity}>
         <Text variant="subtitle">{card.displayName}</Text>
         <VerifiedShield size={16} color={Colors.accent} />
@@ -121,6 +125,10 @@ function ScanCode({ onAdded, onShowInstead }: { onAdded: (id: string) => void; o
       const parsed = parseScannedCode(data);
       if (parsed === 'notNuco') {
         setError({ kind: 'notNuco' });
+        return;
+      }
+      if (parsed === 'incompatibleCard') {
+        setError({ kind: 'incompatibleCard' });
         return;
       }
       if (parsed === 'invalid') {

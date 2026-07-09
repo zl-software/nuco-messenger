@@ -23,4 +23,10 @@ export class SqliteSignalBackend implements KvBackend {
   async remove(key: string): Promise<void> {
     await getDb().execute('DELETE FROM signal_store WHERE key = ?', [key]);
   }
+
+  // The break clean migration drops every Signal record (identity, prekeys, sessions,
+  // pins) in one statement before regenerating a native format identity.
+  async wipeAll(): Promise<void> {
+    await getDb().execute('DELETE FROM signal_store');
+  }
 }

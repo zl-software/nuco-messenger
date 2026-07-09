@@ -1,17 +1,24 @@
-// Crypto self test, runnable on Node with tsx. Validates the full crypto core end to end
-// with BOTH the native WebCrypto provider and the pure JavaScript noble provider (the
-// exact path Hermes uses), so the app crypto is verified without a device:
-//   identity + signed prekey, card based offline X3DH with the deterministic initiator
-//   rule, Double Ratchet round trips, padding, symmetric safety number and emoji SAS,
-//   the card hash proof, and the Ed25519 transport auth signature.
+// Crypto self test, runnable on Node with tsx. Exercises the full crypto core through
+// the SAME facade the app uses (NucoSignal over a LibsignalBackend), backed by
+// @signalapp/libsignal-client, the official Node binding of the exact Rust core the
+// device builds wrap. Covers: identity plus both signed prekeys, card based offline
+// PQXDH with the deterministic initiator rule, Double Ratchet round trips, padding,
+// forged card rejection (elliptic curve AND Kyber signatures), symmetric safety number
+// and emoji SAS, the card hash proof (v2, commits to the Kyber prekey), the Ed25519
+// transport auth signature, the delete plus re-add poison paths, and the identity
+// change detection contract (throws, persists nothing, recovers after deleteSession).
 //
 // Run: npx tsx scripts/crypto-selftest.ts
 
+/// <reference types="node" />
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { ed25519 } from '@noble/curves/ed25519.js';
 import { randomBytes } from '@noble/hashes/utils.js';
-import type { SignedPreKeyPairType } from '@privacyresearch/libsignal-protocol-typescript';
 
-import { installNobleProvider, installNativeProvider } from '../src/crypto/provider';
+import { NodeLibsignalBackend } from '../src/crypto/backend-node';
 import {
   generateChatLockKeys,
   sealBody,
@@ -24,14 +31,19 @@ import { InMemoryKvBackend, NucoSignalStore } from '../src/crypto/store';
 import {
   generateIdentity,
   generateSignedPreKey,
+  generateKyberPreKey,
   installIdentity,
   toSignedPreKeyPublic,
+  toKyberPreKeyPublic,
   identityPublicKeyBase64,
   authPublicKeyBase64,
   signChallenge,
+  SIGNED_PREKEY_ID,
+  KYBER_PREKEY_ID,
   type IdentityMaterial,
+  type GeneratedPreKeyWithId,
 } from '../src/crypto/identity';
-import { NucoSignal, type SessionBootstrap } from '../src/crypto/signal';
+import { NucoSignal, IdentityChangedError, type SessionBootstrap } from '../src/crypto/signal';
 import { computeCardHash, isSessionInitiator } from '../src/crypto/verification';
 import { utf8Encode, utf8Decode, bytesToBase64, base64ToBytes } from '../src/crypto/bytes';
 
@@ -47,17 +59,30 @@ function check(cond: boolean, label: string): void {
 interface Party {
   handle: string;
   id: IdentityMaterial;
-  signedPreKey: SignedPreKeyPairType;
+  signedPreKey: GeneratedPreKeyWithId;
+  kyberPreKey: GeneratedPreKeyWithId;
+  store: NucoSignalStore;
   signal: NucoSignal;
   identityKeyB64: string;
 }
 
+const backend = new NodeLibsignalBackend();
+
 async function makeParty(handle: string): Promise<Party> {
   const store = new NucoSignalStore(new InMemoryKvBackend());
-  const id = await generateIdentity();
-  const signedPreKey = await generateSignedPreKey(id.identityKeyPair, 1);
-  await installIdentity(store, id, signedPreKey);
-  return { handle, id, signedPreKey, signal: new NucoSignal(store), identityKeyB64: identityPublicKeyBase64(id) };
+  const id = await generateIdentity(backend);
+  const signedPreKey = await generateSignedPreKey(backend, id.identityKeyPair.privateKey, SIGNED_PREKEY_ID);
+  const kyberPreKey = await generateKyberPreKey(backend, id.identityKeyPair.privateKey, KYBER_PREKEY_ID);
+  await installIdentity(store, id, signedPreKey, kyberPreKey, handle);
+  return {
+    handle,
+    id,
+    signedPreKey,
+    kyberPreKey,
+    store,
+    signal: new NucoSignal(store, backend),
+    identityKeyB64: identityPublicKeyBase64(id),
+  };
 }
 
 // What the QR contact card carries about a party, as the scanner consumes it.
@@ -67,15 +92,34 @@ function cardFor(party: Party): SessionBootstrap & { handle: string } {
     identityKey: party.identityKeyB64,
     registrationId: party.id.registrationId,
     signedPreKey: toSignedPreKeyPublic(party.signedPreKey),
+    kyberPreKey: toKyberPreKeyPublic(party.kyberPreKey),
   };
 }
 
-async function runFlow(label: string, install: () => void): Promise<void> {
-  console.log(`\n  provider: ${label}`);
-  install();
+async function runFlow(): Promise<void> {
+  console.log('\n  libsignal core (official Node binding)');
+
+  // The Node binding and the native module must wrap the same libsignal version, or the
+  // selftest would prove a different core than the one shipping on devices.
+  const here = dirname(fileURLToPath(import.meta.url));
+  const pin = JSON.parse(readFileSync(join(here, '..', 'modules', 'nuco-libsignal', 'libsignal.json'), 'utf8')) as {
+    version: string;
+  };
+  const nodePackage = JSON.parse(
+    readFileSync(join(here, '..', 'node_modules', '@signalapp', 'libsignal-client', 'package.json'), 'utf8'),
+  ) as { version: string };
+  check(nodePackage.version === pin.version, `node binding ${nodePackage.version} matches the native pin ${pin.version}`);
 
   const alice = await makeParty('alice');
   const bob = await makeParty('bob');
+
+  // Generated key material has the exact shapes the card codec commits to.
+  check(base64ToBytes(alice.identityKeyB64).length === 33, 'identity public key serializes to 33 bytes');
+  check(base64ToBytes(alice.signedPreKey.publicKey).length === 33, 'signed prekey public is 33 bytes');
+  check(base64ToBytes(alice.signedPreKey.signature).length === 64, 'signed prekey signature is 64 bytes');
+  check(base64ToBytes(alice.kyberPreKey.publicKey).length === 1569, 'kyber prekey public is 1569 bytes');
+  check(base64ToBytes(alice.kyberPreKey.signature).length === 64, 'kyber prekey signature is 64 bytes');
+  check(alice.id.registrationId >= 1 && alice.id.registrationId <= 0x3fff, 'registration id is a 14 bit value');
 
   // Exactly one side initiates (byte smaller identity key), the rule is antisymmetric.
   const aliceInitiates = isSessionInitiator(alice.identityKeyB64, bob.identityKeyB64);
@@ -83,7 +127,7 @@ async function runFlow(label: string, install: () => void): Promise<void> {
   const initiator = aliceInitiates ? alice : bob;
   const responder = aliceInitiates ? bob : alice;
 
-  // The initiator establishes the session offline, straight from the scanned card.
+  // The initiator establishes the session offline, straight from the scanned card (PQXDH).
   await initiator.signal.startSession(responder.handle, cardFor(responder));
   const m1 = await initiator.signal.encrypt(responder.handle, utf8Encode('hello, first sealed message'));
   check(m1.messageType === 'prekey', 'first message is a prekey message');
@@ -103,16 +147,25 @@ async function runFlow(label: string, install: () => void): Promise<void> {
     check(utf8Decode(back) === `msg ${i}`, `ratchet round trip ${i}`);
   }
 
-  // A forged card (signed prekey signature from a different identity) must be rejected.
+  // A forged card must be rejected: a signed prekey signature from a different identity,
+  // and equally a Kyber prekey signature from a different identity.
   const mallory = await makeParty('mallory');
-  const forged = { ...cardFor(responder), signedPreKey: toSignedPreKeyPublic(mallory.signedPreKey) };
-  let forgedRejected = false;
+  const forgedEc = { ...cardFor(responder), signedPreKey: toSignedPreKeyPublic(mallory.signedPreKey) };
+  let forgedEcRejected = false;
   try {
-    await mallory.signal.startSession(responder.handle, forged);
+    await mallory.signal.startSession(responder.handle, forgedEc);
   } catch {
-    forgedRejected = true;
+    forgedEcRejected = true;
   }
-  check(forgedRejected, 'card with a mismatched signed prekey signature is rejected');
+  check(forgedEcRejected, 'card with a mismatched signed prekey signature is rejected');
+  const forgedKyber = { ...cardFor(responder), kyberPreKey: toKyberPreKeyPublic(mallory.kyberPreKey) };
+  let forgedKyberRejected = false;
+  try {
+    await mallory.signal.startSession(responder.handle, forgedKyber);
+  } catch {
+    forgedKyberRejected = true;
+  }
+  check(forgedKyberRejected, 'card with a mismatched kyber prekey signature is rejected');
 
   // A large message exercises padding to a higher bucket.
   const big = utf8Encode('x'.repeat(5000));
@@ -128,8 +181,8 @@ async function runFlow(label: string, install: () => void): Promise<void> {
   check(av.emoji.map((e) => e.emoji).join('') === bv.emoji.map((e) => e.emoji).join(''), 'emoji SAS matches on both sides');
   check(av.safetyNumberRows.length === 6 && av.safetyNumberRows[0]!.includes(' '), 'safety number formats into rows');
 
-  // The card hash proof: 44 chars, deterministic, sensitive to every committed field, and
-  // both sides derive the same value for the same card.
+  // The card hash proof (v2): 44 chars, deterministic, sensitive to every committed
+  // field including the kyber prekey, and both sides derive the same value.
   const aliceCard = cardFor(alice);
   const hash = computeCardHash(aliceCard);
   check(hash.length === 44, 'card hash is 44 base64 chars');
@@ -137,8 +190,12 @@ async function runFlow(label: string, install: () => void): Promise<void> {
   check(hash !== computeCardHash({ ...aliceCard, handle: 'alicia' }), 'card hash commits to the handle');
   check(hash !== computeCardHash({ ...aliceCard, identityKey: bob.identityKeyB64 }), 'card hash commits to the identity key');
   check(
-    hash !== computeCardHash({ ...aliceCard, signedPreKey: { publicKey: toSignedPreKeyPublic(bob.signedPreKey).publicKey } }),
+    hash !== computeCardHash({ ...aliceCard, signedPreKey: { ...aliceCard.signedPreKey, publicKey: bob.signedPreKey.publicKey } }),
     'card hash commits to the signed prekey',
+  );
+  check(
+    hash !== computeCardHash({ ...aliceCard, kyberPreKey: { ...aliceCard.kyberPreKey, publicKey: bob.kyberPreKey.publicKey } }),
+    'card hash commits to the kyber prekey',
   );
 
   // Transport auth: signing a relay challenge verifies against the registered auth key.
@@ -160,7 +217,7 @@ async function runFlow(label: string, install: () => void): Promise<void> {
   await resp2.signal.decrypt(init2.handle, await init2.signal.encrypt(resp2.handle, utf8Encode('pair up')));
   await init2.signal.decrypt(resp2.handle, await resp2.signal.encrypt(init2.handle, utf8Encode('paired')));
 
-  // The poison the wipe prevents: only the initiator forgets and re-runs X3DH; the
+  // The poison the wipe prevents: only the initiator forgets and re-runs PQXDH; the
   // responder's stale ratchet then seals messages the initiator can no longer read.
   await init2.signal.deleteSession(resp2.handle);
   await init2.signal.startSession(resp2.handle, cardFor(resp2));
@@ -168,8 +225,8 @@ async function runFlow(label: string, install: () => void): Promise<void> {
   let staleFailed = false;
   try {
     await init2.signal.decrypt(resp2.handle, stale);
-  } catch {
-    staleFailed = true;
+  } catch (err) {
+    staleFailed = !(err instanceof IdentityChangedError);
   }
   check(staleFailed, 'a stale peer ratchet poisons the re-added pair (why delete wipes sessions)');
 
@@ -185,8 +242,60 @@ async function runFlow(label: string, install: () => void): Promise<void> {
   check(utf8Decode(await init2.signal.decrypt(resp2.handle, answer)) === 'welcome back', 'initiator decrypts the re-add answer');
 }
 
-// The chat lock at-rest crypto is pure noble and does not go through the injected
-// provider, so one pass covers the app path.
+// Identity change detection: a peer that re-onboarded sends from a NEW identity under
+// the same handle. The receiver's decrypt must throw IdentityChangedError, persist
+// NOTHING (pin and ratchet untouched), and recover cleanly after deleteSession (the
+// reset handleIdentityChange performs), where trust on first use pins the new identity.
+async function runIdentityChange(): Promise<void> {
+  console.log('\n  identity change detection');
+
+  const erin = await makeParty('erin');
+  const frank = await makeParty('frank');
+  const init = isSessionInitiator(erin.identityKeyB64, frank.identityKeyB64) ? erin : frank;
+  const resp = init === erin ? frank : erin;
+  await init.signal.startSession(resp.handle, cardFor(resp));
+  await resp.signal.decrypt(init.handle, await init.signal.encrypt(resp.handle, utf8Encode('established')));
+  await init.signal.decrypt(resp.handle, await resp.signal.encrypt(init.handle, utf8Encode('yes')));
+
+  // resp re-onboards: same handle, brand new identity and store. It scans init's card
+  // and sends its first message, a prekey message under the NEW identity.
+  const respReborn = await makeParty(resp.handle);
+  await respReborn.signal.startSession(init.handle, cardFor(init));
+  const fromNewIdentity = await respReborn.signal.encrypt(init.handle, utf8Encode('it is me, honest'));
+  check(fromNewIdentity.messageType === 'prekey', 'the re-onboarded peer opens with a prekey message');
+
+  const pinBefore = await init.store.getPinnedIdentity(resp.handle);
+  const sessionBefore = await init.store.loadSession(resp.handle);
+  let threw: unknown = null;
+  try {
+    await init.signal.decrypt(resp.handle, fromNewIdentity);
+  } catch (err) {
+    threw = err;
+  }
+  check(threw instanceof IdentityChangedError, 'decrypt throws IdentityChangedError for the new identity');
+  check(
+    threw instanceof IdentityChangedError && threw.newIdentityKeyB64 === respReborn.identityKeyB64,
+    'the error carries the new identity key',
+  );
+  check((await init.store.getPinnedIdentity(resp.handle)) === pinBefore, 'the pinned identity is untouched');
+  check((await init.store.loadSession(resp.handle)) === sessionBefore, 'the session record is untouched');
+
+  // After the reset (deleteSession, as handleIdentityChange does), the SAME envelope
+  // decrypts via trust on first use and the new identity is pinned.
+  await init.signal.deleteSession(resp.handle);
+  const recovered = await init.signal.decrypt(resp.handle, fromNewIdentity);
+  check(utf8Decode(recovered) === 'it is me, honest', 'the same envelope decrypts after the reset');
+  check(
+    (await init.store.getPinnedIdentity(resp.handle)) === respReborn.identityKeyB64,
+    'the new identity is pinned on trust of first use',
+  );
+
+  // And the conversation works both ways on the new pairing.
+  const back = await init.signal.encrypt(resp.handle, utf8Encode('rebuilt'));
+  check(utf8Decode(await respReborn.signal.decrypt(init.handle, back)) === 'rebuilt', 'the rebuilt pair round trips');
+}
+
+// The chat lock at-rest crypto is pure noble and independent of libsignal.
 async function runChatLock(): Promise<void> {
   console.log('\n  chat lock (per chat at-rest sealing)');
 
@@ -244,8 +353,8 @@ function throws(fn: () => unknown): boolean {
 
 async function main(): Promise<void> {
   console.log('crypto self test');
-  await runFlow('native WebCrypto', installNativeProvider);
-  await runFlow('noble pure JS (Hermes path)', installNobleProvider);
+  await runFlow();
+  await runIdentityChange();
   await runChatLock();
 
   if (failures > 0) {

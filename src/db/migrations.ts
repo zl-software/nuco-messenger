@@ -63,6 +63,11 @@ export async function migrate(db: DB): Promise<void> {
     if (current < 8 && !(await columnExists(db, 'contacts', 'name_sync_pending'))) {
       await db.execute('ALTER TABLE contacts ADD COLUMN name_sync_pending INTEGER NOT NULL DEFAULT 0');
     }
+    // v8 -> v9: PQXDH (protocol 3.0). The peer's signed Kyber prekey public key from
+    // their scanned card, needed to recompute the cardHash v2 proof at confirm time.
+    if (current < 9 && !(await columnExists(db, 'contacts', 'card_kyber_pub'))) {
+      await db.execute('ALTER TABLE contacts ADD COLUMN card_kyber_pub TEXT');
+    }
     await db.execute(
       'INSERT INTO meta(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
       ['schema_version', String(SCHEMA_VERSION)],

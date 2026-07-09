@@ -8,7 +8,7 @@ import { ErrorCode } from '@nuco/protocol';
 import { Button, Card, ChevronLeft, QrCard, QrIcon, Screen, Text } from '@/ui';
 import { getContact, isMutuallyVerified, type Contact } from '@/db/repos/contacts';
 import { getSignal } from '@/services/account';
-import { buildContactCard } from '@/services/contacts';
+import { buildContactCardQr } from '@/services/contacts';
 import { subscribeConversationsChanged } from '@/services/data-events';
 import { confirmVerification, getConfirmError, retryConfirm } from '@/services/verification';
 import { resolveServerUrl } from '@/services/server';
@@ -58,7 +58,7 @@ export default function VerifyScreen() {
   const serverUrl = useSettings((s) => resolveServerUrl(s));
   // Memoized so the countdown rerenders do not regenerate the QR matrix every second.
   const qrValue = useMemo(
-    () => (account ? JSON.stringify(buildContactCard(account, serverUrl)) : null),
+    () => (account ? buildContactCardQr(account, serverUrl) : null),
     [account, serverUrl],
   );
 

@@ -1,28 +1,9 @@
-// The 60 digit safety number, computed with the Signal library's fingerprint generator
-// (iterated SHA-512). Both devices derive the SAME number from the two identity public
-// keys, so the two people can compare it in person to confirm they hold each other's real
-// key. This is the trust anchor for verification.
-
-import { FingerprintGenerator } from '@privacyresearch/libsignal-protocol-typescript';
-
-import { base64ToAb } from './bytes';
-
-const ITERATIONS = 5200;
-
-export async function computeSafetyNumber(
-  localIdentifier: string,
-  localIdentityKeyB64: string,
-  remoteIdentifier: string,
-  remoteIdentityKeyB64: string,
-): Promise<string> {
-  const generator = new FingerprintGenerator(ITERATIONS);
-  return generator.createFor(
-    localIdentifier,
-    base64ToAb(localIdentityKeyB64),
-    remoteIdentifier,
-    base64ToAb(remoteIdentityKeyB64),
-  );
-}
+// The 60 digit safety number, computed by libsignal's numeric fingerprint generator
+// (iterated SHA-512) via NucoSignal.verificationStrings. Both devices derive the SAME
+// number from the two identity public keys, so the two people can compare it in person
+// to confirm they hold each other's real key. This is the trust anchor for verification.
+// Only the pure formatting lives here; the computation needs the backend and sits in
+// signal.ts.
 
 // Format the 60 digits into three rows of two 5 digit groups, matching the design.
 export function formatSafetyNumber(safetyNumber: string): string[] {
