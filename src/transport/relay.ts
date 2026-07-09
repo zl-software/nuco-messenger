@@ -280,8 +280,14 @@ export class RelayClient {
       }
       case 'error':
         if (msg.rid) {
+          // Correlated errors belong to their requester alone: the rejected promise is
+          // the delivery. Also firing onError here would let the app treat a normal
+          // negotiation step (like ATTESTATION_REQUIRED before the attested retry) as a
+          // terminal failure and tear the client down mid flow.
           this.settleRid(msg.rid, (p) => p.reject(new Error(msg.code)));
-        } else if (msg.code === ErrorCode.NotRegistered && this.registerParams && !this.didTryRegister) {
+          return;
+        }
+        if (msg.code === ErrorCode.NotRegistered && this.registerParams && !this.didTryRegister) {
           // Authentication said the relay does not know us yet: register, then retry auth.
           void this.registerThenAuthenticate();
           return;
