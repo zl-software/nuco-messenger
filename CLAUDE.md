@@ -70,6 +70,11 @@ sibling `protocol/` repo, then sync and commit the vendor copy.
 - `EXPO_PUBLIC_*` env vars are inlined at bundle time; restart Metro with `-c` to change them.
 - i18next `_one`/`_other` plural resolution needs `Intl.PluralRules`, which Hermes does not
   guarantee. Select the suffixed key by hand (see `retentionLabel` in `src/i18n/system-messages.ts`).
+- The React Compiler (`reactCompiler: true`) memoizes render output by its REACTIVE inputs.
+  An impure read in render (`Date.now()`, module state) gets cached and never re-runs, even
+  when a state tick forces re-renders: the call duration label froze at 0:00 this way.
+  Derive time from state (see the `clock` state in `calls/CallHost.tsx`) and treat
+  react-compiler lint errors about impure render reads as real bugs, not style noise.
 - The `locales/*.json` `Localizable.strings` keys carry their own escaped quotes
   (`"\"New message\""`): @expo/config-plugins writes strings file keys UNQUOTED, and a key
   with a space is invalid plist syntax, which fails the Xcode build (validation failed:

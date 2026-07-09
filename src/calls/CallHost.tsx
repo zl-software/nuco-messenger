@@ -104,11 +104,15 @@ export function CallHost() {
     if (inCall) Keyboard.dismiss();
   }, [inCall]);
 
-  // A 1s tick drives the duration label while media is up.
-  const [, setTick] = useState(0);
+  // A 1s clock drives the duration label while media is up. The rendered time derives
+  // from this STATE value, never from Date.now() in render: the React Compiler memoizes
+  // render output by its reactive inputs, so an impure Date.now() read froze the label
+  // at 0:00 (the react-compiler lint rule flags exactly this).
+  const [clock, setClock] = useState(() => Date.now());
   useEffect(() => {
     if (call.status !== 'active' && call.status !== 'reconnecting') return;
-    const interval = setInterval(() => setTick((n) => n + 1), 1000);
+    setClock(Date.now());
+    const interval = setInterval(() => setClock(Date.now()), 1000);
     return () => clearInterval(interval);
   }, [call.status]);
 
@@ -166,7 +170,7 @@ export function CallHost() {
       case 'reconnecting':
         return t('call.statusReconnecting');
       case 'active':
-        return call.activeSince ? formatCallDuration((Date.now() - call.activeSince) / 1000) : t('call.statusConnecting');
+        return call.activeSince ? formatCallDuration(Math.max(0, clock - call.activeSince) / 1000) : t('call.statusConnecting');
       case 'ending':
         return call.endReason ? t(endReasonKey(call.endReason), { name: call.contactName }) : t('call.statusEnded');
       default:

@@ -54,6 +54,7 @@ interface ActiveCall {
   engine: CallEngine | null;
   pendingOfferSdp: string | null; // callee side: the remote offer awaiting answer()
   offerSendStarted: boolean; // caller side: the offer was handed to the transport (or is in flight)
+  answerApplied: boolean; // caller side: the answer sdp was applied once (redeliveries are ignored)
   activeSince: number | null;
   muted: boolean;
   speaker: boolean;
@@ -156,6 +157,7 @@ export class CallController {
       engine: null,
       pendingOfferSdp: null,
       offerSendStarted: false,
+      answerApplied: false,
       activeSince: null,
       muted: false,
       speaker: false,
@@ -219,6 +221,10 @@ export class CallController {
     this.deps.audio.stopIncomingRing();
     this.clearRing();
     this.setStatus('connecting');
+    // Tell the caller immediately (before the TURN fetch, mic acquisition, and gathering
+    // that producing the answer sdp needs), so its ringing state ends in step with ours.
+    // Best effort: the authoritative transition remains the call/answer below.
+    void this.deps.sendSignal(call.contact.handle, { t: 'call/accept', callId: call.callId }).catch(() => undefined);
 
     let turn: TurnCredentials;
     try {
@@ -333,6 +339,9 @@ export class CallController {
       switch (signal.t) {
         case 'call/offer':
           await this.handleOffer(from, signal.callId, signal.sdp, sentAt);
+          return;
+        case 'call/accept':
+          this.handleAccepted(from, signal.callId);
           return;
         case 'call/answer':
           this.handleAnswer(from, signal.callId, signal.sdp);
@@ -465,6 +474,7 @@ export class CallController {
       engine: null,
       pendingOfferSdp: sdp,
       offerSendStarted: false,
+      answerApplied: false,
       activeSince: null,
       muted: false,
       speaker: false,
@@ -485,12 +495,30 @@ export class CallController {
     }
   }
 
-  private handleAnswer(from: CallContact, callId: string, sdp: string): void {
+  // The callee's accepted marker (since protocol 2.5): leave ringing right away; the
+  // answer sdp follows once the callee finishes TURN, mic, and gathering. Stale, foreign,
+  // or duplicate markers are ignored, and a caller that never receives one just stays
+  // ringing until the authoritative call/answer arrives, exactly as before.
+  private handleAccepted(from: CallContact, callId: string): void {
     const call = this.call;
     if (!call || call.direction !== 'out' || call.callId !== callId) return;
     if (call.contact.handle !== from.handle || this.status !== 'outgoing-ringing') return;
     this.clearRing();
     this.setStatus('connecting');
+    this.startConnectTimer(call);
+  }
+
+  private handleAnswer(from: CallContact, callId: string, sdp: string): void {
+    const call = this.call;
+    if (!call || call.direction !== 'out' || call.callId !== callId) return;
+    if (call.contact.handle !== from.handle || call.answerApplied) return;
+    // 'connecting' happens when the accepted marker arrived first; a redelivered answer
+    // in any later state is ignored via answerApplied.
+    if (this.status !== 'outgoing-ringing' && this.status !== 'connecting') return;
+    call.answerApplied = true;
+    this.clearRing();
+    this.setStatus('connecting');
+    // Restart the window: media should follow this answer, not the earlier accept.
     this.startConnectTimer(call);
     call.engine?.acceptAnswerSdp(sdp).catch(() => {
       if (this.call !== call) return;

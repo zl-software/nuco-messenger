@@ -147,6 +147,37 @@ async function main(): Promise<void> {
     check(!b.rows[0]!.unread, 'happy: a completed call is not unread');
   }
 
+  // 1b. Accepted marker (protocol 2.5): the caller leaves ringing the moment the callee
+  // presses answer, before the answer sdp exists; the later answer applies exactly once.
+  {
+    const { bus, a, b } = freshPair();
+    void a.ctrl.placeCall(b.contact);
+    await waitFor(() => b.status() === 'incoming-ringing');
+    check(a.status() === 'outgoing-ringing', 'accept: caller ringing before the press');
+    bus.auto = false; // hold signals so the accept and the answer are observable phases
+    void b.ctrl.answer(); // queues call/accept synchronously, call/answer after engine work
+    bus.flush(); // deliver only the accept
+    await waitFor(() => a.status() === 'connecting');
+    check(b.status() === 'connecting', 'accept: both sides connecting before the answer');
+    await sleep(10); // let the fake engine finish producing the answer sdp
+    bus.flush();
+    bus.auto = true;
+    await waitFor(() => a.status() === 'active' && b.status() === 'active');
+    check(true, 'accept: answer after the accept still reaches active');
+    await a.ctrl.handleCallSignal(b.contact, { t: 'call/answer', callId: 'alice-call-1', sdp: 'v=0 dup' }, Date.now());
+    check(a.status() === 'active', 'accept: duplicate answer redelivery is ignored');
+    a.ctrl.hangUp();
+    await waitFor(() => a.status() === 'idle' && b.status() === 'idle');
+    check(a.rows[0]?.kind === 'call/outgoing', 'accept: caller summary row still correct');
+  }
+
+  // 1c. A stray accept with no live call is a silent no-op.
+  {
+    const { a, b } = freshPair();
+    await a.ctrl.handleCallSignal(b.contact, { t: 'call/accept', callId: 'ghost-1' }, Date.now());
+    check(a.status() === 'idle' && a.rows.length === 0, 'accept: stray accept with no call is a no-op');
+  }
+
   // 2. Decline.
   {
     const { a, b } = freshPair();

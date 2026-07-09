@@ -613,6 +613,7 @@ async function doReceiveEnvelope(from: string, envelope: MessageEnvelope): Promi
         break;
       }
       case 'call/offer':
+      case 'call/accept':
       case 'call/answer':
       case 'call/end':
         // Signaling is plumbing: no timeline row here. The call controller writes summary

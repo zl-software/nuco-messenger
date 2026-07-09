@@ -10,7 +10,7 @@ import type { TurnCredentials } from '../transport/relay';
 
 // The wire signaling variants, narrowed from the protocol content union so the controller
 // compiles against the single source of truth.
-export type CallSignal = Extract<MessageContent, { t: 'call/offer' | 'call/answer' | 'call/end' }>;
+export type CallSignal = Extract<MessageContent, { t: 'call/offer' | 'call/accept' | 'call/answer' | 'call/end' }>;
 
 export interface CallContact {
   id: string;
