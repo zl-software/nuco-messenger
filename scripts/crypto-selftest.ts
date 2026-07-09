@@ -146,6 +146,43 @@ async function runFlow(label: string, install: () => void): Promise<void> {
   const sig = signChallenge(alice.id.authKeyPair, nonce);
   const ok = ed25519.verify(base64ToBytes(sig), base64ToBytes(nonce), base64ToBytes(authPublicKeyBase64(alice.id.authKeyPair)));
   check(ok, 'transport auth signature verifies');
+
+  // Contact deletion and re-add. deleteSession must forget the peer's ratchet on BOTH
+  // sides so a re-add runs the first-scan flow again: the initiator's next message is a
+  // prekey message (held unacked by the relay for an unknown receiver, so it survives
+  // the deletion window) and the responder has no session until it arrives (the confirm
+  // deferral condition).
+  const carol = await makeParty('carol');
+  const dave = await makeParty('dave');
+  const init2 = isSessionInitiator(carol.identityKeyB64, dave.identityKeyB64) ? carol : dave;
+  const resp2 = init2 === carol ? dave : carol;
+  await init2.signal.startSession(resp2.handle, cardFor(resp2));
+  await resp2.signal.decrypt(init2.handle, await init2.signal.encrypt(resp2.handle, utf8Encode('pair up')));
+  await init2.signal.decrypt(resp2.handle, await resp2.signal.encrypt(init2.handle, utf8Encode('paired')));
+
+  // The poison the wipe prevents: only the initiator forgets and re-runs X3DH; the
+  // responder's stale ratchet then seals messages the initiator can no longer read.
+  await init2.signal.deleteSession(resp2.handle);
+  await init2.signal.startSession(resp2.handle, cardFor(resp2));
+  const stale = await resp2.signal.encrypt(init2.handle, utf8Encode('sealed with the old ratchet'));
+  let staleFailed = false;
+  try {
+    await init2.signal.decrypt(resp2.handle, stale);
+  } catch {
+    staleFailed = true;
+  }
+  check(staleFailed, 'a stale peer ratchet poisons the re-added pair (why delete wipes sessions)');
+
+  // The designed clean path: both sides forget, then re-add works like a first scan.
+  await init2.signal.deleteSession(resp2.handle);
+  await resp2.signal.deleteSession(init2.handle);
+  check(!(await resp2.signal.hasSession(init2.handle)), 'responder has no session after deletion (confirm defers)');
+  await init2.signal.startSession(resp2.handle, cardFor(resp2));
+  const readd = await init2.signal.encrypt(resp2.handle, utf8Encode('hello again'));
+  check(readd.messageType === 'prekey', 're-add first message is a prekey message again');
+  check(utf8Decode(await resp2.signal.decrypt(init2.handle, readd)) === 'hello again', 'responder decrypts the re-add prekey message');
+  const answer = await resp2.signal.encrypt(init2.handle, utf8Encode('welcome back'));
+  check(utf8Decode(await init2.signal.decrypt(resp2.handle, answer)) === 'welcome back', 'initiator decrypts the re-add answer');
 }
 
 // The chat lock at-rest crypto is pure noble and does not go through the injected

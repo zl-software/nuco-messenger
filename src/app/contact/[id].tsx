@@ -9,13 +9,13 @@ import { Avatar, BottomSheet, Button, Card, ChevronLeft, ChevronRight, Phone, Sc
 import { useStartCall } from '@/calls/use-start-call';
 import { useCall } from '@/state/call';
 import {
-  deleteContact,
   getContact,
   isMutuallyVerified,
   setBlocked,
   setMuted,
   type Contact,
 } from '@/db/repos/contacts';
+import { removeContact } from '@/services/contacts';
 import { getConversation, type Conversation } from '@/db/repos/conversations';
 import { biometricsAvailable } from '@/lock/biometrics';
 import {
@@ -23,7 +23,6 @@ import {
   disableChatLock,
   enableChatLock,
   isChatUnlocked,
-  removeChatLockSecrets,
   removeLockAndDeleteMessages,
   setChatBio,
   unlockChatWithBiometrics,
@@ -180,10 +179,9 @@ export default function ContactDetailScreen() {
           style: 'destructive',
           onPress: () => {
             void (async () => {
-              // The chat lock keystore items do not cascade with the db rows; drop them
-              // explicitly (best effort, the wipe paths walk the index as a backstop).
-              await removeChatLockSecrets(contact.id).catch(() => undefined);
-              await deleteContact(contact.id);
+              // removeContact also wipes the peer's Signal session and confirm state, so
+              // a later re-add runs the clean first-scan verification flow.
+              await removeContact(contact);
               emitConversationsChanged();
               // Not router.back(): this screen is often reached through a replace chain
               // (scan, verify), where back() is a no-op and would leave a detail page for

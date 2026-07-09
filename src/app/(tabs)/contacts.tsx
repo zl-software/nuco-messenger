@@ -5,9 +5,9 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { Avatar, BottomSheet, ChevronRight, Pill, Plus, Screen, SearchField, SwipeableRow, Text, VerifiedShield } from '@/ui';
-import { deleteContact, listContacts, type Contact } from '@/db/repos/contacts';
+import { listContacts, type Contact } from '@/db/repos/contacts';
 import { isDbOpen } from '@/db/client';
-import { removeChatLockSecrets } from '@/lock/chat-locks';
+import { removeContact } from '@/services/contacts';
 import { emitConversationsChanged } from '@/services/data-events';
 import { Colors, Overlay, Radius, Spacing } from '@/constants/theme';
 
@@ -70,8 +70,7 @@ export default function ContactsScreen() {
           style: 'destructive',
           onPress: () => {
             void (async () => {
-              await removeChatLockSecrets(c.id).catch(() => undefined);
-              await deleteContact(c.id);
+              await removeContact(c);
               emitConversationsChanged();
               // This screen reloads on focus only; drop the row in place.
               setContacts((prev) => prev.filter((x) => x.id !== c.id));

@@ -51,6 +51,14 @@ export async function retryConfirm(contact: Contact): Promise<void> {
   await sendConfirm(contact);
 }
 
+// Contact deletion: drop the per run confirm state so a re-add starts clean. Without
+// this, the once-per-run send guard from the previous pairing silently swallows every
+// confirm of the new one for the rest of the app run.
+export function forgetConfirmState(handle: string): void {
+  sentThisRun.delete(handle);
+  confirmErrors.delete(handle);
+}
+
 // Wire the inbound handlers into messaging (setter pattern, so messaging never imports
 // this module and no import cycle forms). Called from boot before the relay starts.
 export function initVerificationService(): void {
@@ -97,14 +105,21 @@ export async function handleInboundConfirm(
   if (cardHash !== ownHash) return;
   if (contact.peerConfirmedAt != null) {
     // Duplicate: the peer resending means our own confirm may not have reached them.
-    if (contact.localConfirmedAt != null) void sendConfirm(contact);
+    // A validated inbound confirm always earns one reply: clear the once-per-run guard
+    // first, or a send from an earlier pairing this run would swallow the answer and
+    // strand the peer on the waiting screen.
+    if (contact.localConfirmedAt != null) {
+      sentThisRun.delete(contact.handle);
+      void sendConfirm(contact);
+    }
     return;
   }
   await setPeerConfirmed(contact.id, Date.now());
   if (contact.localConfirmedAt != null) {
     // The peer's confirm completes the pair: log the unlock (envelope id makes a relay
-    // redelivery a no-op) and answer so the peer unlocks too.
+    // redelivery a no-op) and answer so the peer unlocks too (guard cleared as above).
     await insertVerifiedSystemRow(contact.id, envelopeId, sentAt, 'in');
+    sentThisRun.delete(contact.handle);
     void sendConfirm(contact);
   }
   emitConversationsChanged(contact.id);

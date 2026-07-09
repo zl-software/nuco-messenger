@@ -108,6 +108,14 @@ export class NucoSignalStore implements StorageType {
     const s = await this.kv.get(K.session(encodedAddress));
     return s === null ? undefined : s;
   }
+  // Not part of StorageType: contact deletion forgets the peer's ratchet and pinned
+  // identity so a later re-add starts from a clean X3DH like a first scan.
+  async removeSession(encodedAddress: string): Promise<void> {
+    await this.kv.remove(K.session(encodedAddress));
+  }
+  async removeIdentity(identifier: string): Promise<void> {
+    await this.kv.remove(K.identity(identifier));
+  }
 
   async loadSignedPreKey(keyId: string | number): Promise<KeyPairType | undefined> {
     const s = await this.kv.get(K.signedPreKey(keyId));

@@ -23,6 +23,11 @@ polyfills, camera, push, foreground service). Build with `eas build --profile de
   must stay importable without native modules (the e2e harness and `calls:check` depend on
   it). Calls are relay only ICE; call signaling is sealed `call/*` message content.
 - The lock gates DECRYPTION, not just the UI. The SQLCipher key lives only in memory.
+- Contact deletion goes through `services/contacts.removeContact` ONLY (never bare
+  `deleteContact`): it also wipes the peer's Signal session and the per run confirm
+  state. A surviving session makes a re-add exchange whisper confirms, which the
+  unknown-sender rule acks and drops in the deletion window, stranding the pair on the
+  waiting screen (the re-add scenario is covered by `crypto:selftest`).
 - No hardcoded user facing strings: use i18n (`useTranslation`, keys in
   `src/i18n/locales/en.json` and `de.json`, parity checked). English default, German shipped.
 - No em dashes or en dashes anywhere. Commits look human authored (no AI attribution).

@@ -14,8 +14,10 @@ import { reconnectRelay } from './boot';
 import { formatFingerprint } from './onboarding';
 import { loadPrefs } from './prefs';
 import { defaultServerUrl, isSameServer, normalizeServerUrl, resolveServerUrl } from './server';
-import { upsertContact, getContactByHandle, type Contact } from '@/db/repos/contacts';
+import { upsertContact, getContactByHandle, deleteContact, type Contact } from '@/db/repos/contacts';
 import { ensureConversation } from '@/db/repos/conversations';
+import { removeChatLockSecrets } from '@/lock/chat-locks';
+import { forgetConfirmState } from './verification';
 
 export type ScanOutcome =
   | { kind: 'added'; contact: Contact; alreadyExisted: boolean }
@@ -131,4 +133,18 @@ export async function addContactFromCard(
   // now that we can process it.
   void reconnectRelay();
   return { kind: 'added', contact, alreadyExisted: existing !== null };
+}
+
+// Remove a contact and every trace tied to it: the chat lock secrets, the db rows
+// (conversation and messages cascade from the contact row), the peer's Signal state, and
+// the per run confirm bookkeeping. Forgetting the session is load bearing: with it gone,
+// a re-add runs the designed first-scan flow (the initiator's confirm is a PREKEY message
+// that the relay holds unacked for an unknown receiver, and the responder defers until
+// the session exists), instead of racing whisper confirms into the deletion window where
+// an unknown-sender whisper is acked and dropped forever.
+export async function removeContact(contact: Pick<Contact, 'id' | 'handle'>): Promise<void> {
+  await removeChatLockSecrets(contact.id).catch(() => undefined);
+  await getSignal().deleteSession(contact.handle);
+  forgetConfirmState(contact.handle);
+  await deleteContact(contact.id);
 }

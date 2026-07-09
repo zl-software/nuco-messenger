@@ -66,6 +66,16 @@ export class NucoSignal {
     return new SessionCipher(this.store, this.address(handle)).hasOpenSession();
   }
 
+  // Forget everything tied to a peer: the session ratchet and the pinned identity. Called
+  // when a contact is deleted so a future re-add starts from a clean X3DH exactly like a
+  // first scan. A stale responder session would otherwise seal the next verify/confirm
+  // with a ratchet the re-adding initiator no longer holds, leaving that confirm
+  // undecryptable forever and the initiator stuck waiting.
+  async deleteSession(handle: string): Promise<void> {
+    await this.store.removeSession(this.address(handle).toString());
+    await this.store.removeIdentity(handle);
+  }
+
   // X3DH: establish a session toward a peer from their scanned contact card. processPreKey
   // validates the signed prekey signature against the identity key, so a forged card fails
   // here. No one time prekeys exist since protocol 2.0.
