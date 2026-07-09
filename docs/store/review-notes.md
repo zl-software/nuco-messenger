@@ -2,7 +2,7 @@
 
 These notes explain how to review a messenger whose contact exchange is strictly in
 person, plus the reasons for the background modes and the registration gating. Replace
-REPLACE_WITH_VIDEO_URL before submitting.
+https://www.youtube.com/watch?v=lRs9VdbApJU before submitting.
 
 ## Suggested review notes text
 
@@ -23,7 +23,7 @@ How to review:
    number, email, or personal data is requested), set the PIN, and explore.
 2. The full messaging flow (mutual QR scan, emoji verification, sealed messaging,
    disappearing messages, a voice call, screenshot protection) requires two devices side
-   by side. We recorded the complete flow on two phones here: REPLACE_WITH_VIDEO_URL
+   by side. We recorded the complete flow on two phones here: https://www.youtube.com/watch?v=lRs9VdbApJU
 3. If you have two test devices available, the whole pairing flow takes about a minute:
    both devices show their QR under "Add contact", each scans the other, then both
    confirm the emoji match.
@@ -52,6 +52,6 @@ Technical notes for the reviewer:
   covering onboarding, mutual scan, emoji verification, messaging, a disappearing message
   expiring, a voice call, and the lock screen). Upload anywhere reviewers can stream
   without login (for example an unlisted Vimeo or a direct HTTPS mp4) and replace
-  REPLACE_WITH_VIDEO_URL above.
+  https://www.youtube.com/watch?v=lRs9VdbApJU above.
 - Contact fields in App Review Information: a reachable phone number and
   support@zlsoftware.at.
