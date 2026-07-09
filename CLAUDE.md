@@ -4,12 +4,20 @@ The Nuco app. Expo SDK 56, RN 0.85, React 19, New Architecture, Reanimated 4, ex
 (routes in `src/app/`, alias `@/*` to `src/*`). Dark theme only. See `../CLAUDE.md` for the
 whole project. Read the versioned Expo v56 docs before touching native config.
 
-Runs as a dev build, NOT Expo Go (custom native modules: op-sqlite SQLCipher, libsignal
-polyfills, camera, push, foreground service). Build with `eas build --profile development`.
+Runs as a dev build, NOT Expo Go (custom native modules: op-sqlite SQLCipher, official
+libsignal in `modules/nuco-libsignal`, the pinned relay socket in `modules/nuco-pinned-ws`,
+camera, push, foreground service). Build with `eas build --profile development`.
 
 ## Rules
 
-- All Signal specific code stays behind `src/crypto/signal.ts` (the v1 library is UNAUDITED).
+- All Signal specific code stays behind `src/crypto/signal.ts`, which runs OFFICIAL
+  libsignal through the `crypto/backend.ts` seam: `backend-native.ts` (the only importer
+  of `modules/nuco-libsignal`) on device, `backend-node.ts`
+  (`@signalapp/libsignal-client`) for the Node harnesses. Backend calls are record
+  passing; persistence and the pinned identity trust decision live in `signal.ts` only
+  (an identity mismatch on a prekey message throws `IdentityChangedError` and persists
+  NOTHING). The libsignal version pin is `modules/nuco-libsignal/libsignal.json`; the
+  selftest asserts the Node binding matches it.
 - A conversation is usable only after MUTUAL verification (both scanned, both confirmed the
   emoji SAS). The single send gate lives in `messaging.sendContent` (only `verify/confirm`
   is exempt); the receive gate decrypts, acks, and silently drops anything else from an
@@ -37,7 +45,7 @@ polyfills, camera, push, foreground service). Build with `eas build --profile de
 
 ```
 npm run typecheck
-npm run crypto:selftest   # full crypto core on Node, native AND noble providers
+npm run crypto:selftest   # full crypto core on Node via official libsignal
 npm run i18n:check        # en/de key parity
 npm run calls:check       # call state machine on Node with fake engines
 npm run protocol:check    # vendor/protocol matches ../protocol
@@ -51,11 +59,14 @@ sibling `protocol/` repo, then sync and commit the vendor copy.
 ## On-device gotchas (do not regress)
 
 - Metro does not bundle the Node `buffer` builtin; it is aliased to the npm `buffer` package
-  in `metro.config.js`.
-- Hermes `TextDecoder` is utf-8 only, but the bundled curve module builds a utf-16le decoder
-  at load. `src/crypto/text-polyfill.ts` must be imported before the Signal library (it is the
-  first import in `src/crypto/polyfills.ts`).
+  in `metro.config.js` (the qrcode dependency of react-native-qrcode-svg needs it).
 - Relative imports must be extensionless (Metro), but `@noble` subpaths need `.js`.
+- The relay socket to the reference relay runs through `modules/nuco-pinned-ws`
+  (URLSession) on iOS so the NSPinnedDomains certificate pins apply; RN's own WebSocket
+  bypasses ATS entirely. Pins and plugin: `plugins/relay-pins.json` and
+  `plugins/with-relay-cert-pinning.js`; provenance, runbook, and the negative test:
+  `docs/relay-pinning.md`. Never put pinning logic in `transport/relay.ts` (shared with
+  the Node e2e harness).
 - Large `Text` needs an explicit `lineHeight` or iOS clips the top of glyphs.
 - Heavy sync crypto (scrypt, curve) freezes the UI: use `scryptAsync`, keep curve work off
   the UI path.
@@ -85,8 +96,9 @@ sibling `protocol/` repo, then sync and commit the vendor copy.
 
 ## Structure
 
-`crypto/` (Signal, providers, identity, verification primitives, safety number, SAS, store,
-secure storage, the pure per chat sealing in chat-lock.ts, byte and text polyfills),
+`crypto/` (the signal.ts facade over the libsignal backend seam, identity, verification
+primitives, safety number, SAS, the record store, secure storage, the pure per chat
+sealing in chat-lock.ts, byte helpers and polyfills),
 `calls/` (controller state machine, webrtc engine, audio session, CallHost overlay, fake
 engine for Node), `db/` (op-sqlite SQLCipher, repos), `transport/` (relay client, push),
 `lock/` (controller, biometrics, pin, chat-locks for the per chat lock),
