@@ -40,6 +40,12 @@ export const CALL_SDP_MAX_LEN = 8192;
 export const CALL_END_REASON_MAX_LEN = 32;
 export const CALL_RING_TIMEOUT_SECONDS = 45;
 export const CALL_OFFER_STALE_SECONDS = 120;
+// `call/accept` (since 2.5) is the callee's immediate "I pressed answer": it is sent
+// before the TURN fetch, microphone acquisition, and relay-only ICE gathering that
+// producing the `call/answer` sdp requires, so the caller can leave its ringing state in
+// step with the callee instead of seconds later. Purely informational: the `call/answer`
+// remains the authoritative transition into media setup, and a peer that does not know
+// `call/accept` (pre 2.5) drops it as unknown content and keeps today's behavior.
 // Mutual verification. `verify/confirm` says: this sender scanned the receiver's contact
 // card AND confirmed the emoji SAS in person. cardHash proves the scan: it is
 // base64(sha256(utf8(handle) || 0x00 || identityKeyBytes || 0x00 || signedPreKeyPublicBytes))
@@ -62,6 +68,7 @@ const MESSAGE_CONTENT_TYPE_MAP = {
     'screenshot/accept': true,
     'screenshot/cancel': true,
     'call/offer': true,
+    'call/accept': true,
     'call/answer': true,
     'call/end': true,
     'verify/confirm': true,
@@ -131,6 +138,8 @@ function isMessageContent(v) {
                 typeof o.sdp === 'string' &&
                 o.sdp.length > 0 &&
                 o.sdp.length <= CALL_SDP_MAX_LEN);
+        case 'call/accept':
+            return typeof o.callId === 'string' && o.callId.length > 0 && o.callId.length <= CALL_ID_MAX_LEN;
         case 'call/end':
             return (typeof o.callId === 'string' &&
                 o.callId.length > 0 &&

@@ -23,6 +23,9 @@ export type MessageContent = {
     readonly callId: string;
     readonly sdp: string;
 } | {
+    readonly t: 'call/accept';
+    readonly callId: string;
+} | {
     readonly t: 'call/answer';
     readonly callId: string;
     readonly sdp: string;
