@@ -6,7 +6,7 @@
 import * as Crypto from 'expo-crypto';
 
 import { encodeContent, decodeContent, type MessageContent, type MessageEnvelope } from '@nuco/protocol';
-import { getContactByHandle, isMutuallyVerified, type Contact } from '@/db/repos/contacts';
+import { getContactByHandle, isMutuallyVerified, setDisplayName as setContactDisplayName, type Contact } from '@/db/repos/contacts';
 import {
   ensureConversation,
   getConversation,
@@ -77,7 +77,7 @@ async function insertSystemMessage(opts: {
   conversationId: string;
   kind: MessageKind;
   direction: 'in' | 'out';
-  value: number | null;
+  value: number | string | null;
   retentionSeconds: number;
   sentAt: number;
   expiryFrom: number;
@@ -636,6 +636,28 @@ async function doReceiveEnvelope(from: string, envelope: MessageEnvelope): Promi
         // deleted again).
         await deletePeerAuthoredMessage(content.id, contact.id);
         break;
+      case 'profile/name': {
+        // The peer renamed themselves. Applying it is cooperative client behavior; the
+        // display name never participates in verification (it is not part of the
+        // cardHash). An unchanged name breaks straight to the shared ack, which makes
+        // reconnect resends and relay redeliveries harmless. The note body carries both
+        // names as JSON so the row still reads correctly after later renames.
+        const newName = content.name.trim();
+        if (!newName || newName === contact.displayName) break;
+        await setContactDisplayName(contact.id, newName);
+        await insertSystemMessage({
+          id: envelope.id,
+          conversationId: contact.id,
+          kind: 'name/changed',
+          direction: 'in',
+          value: JSON.stringify({ old: contact.displayName, new: newName }),
+          retentionSeconds: convo.retentionSeconds,
+          sentAt: envelope.sentAt || now,
+          expiryFrom: now,
+          read: false,
+        });
+        break;
+      }
       case 'unknown':
         // Structured content from a newer peer: ack and drop, never render as text.
         break;

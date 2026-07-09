@@ -124,6 +124,7 @@ export async function addContactFromCard(
     cardSpkPub: card.signedPreKey.publicKey,
     blocked: existing?.blocked ?? false,
     muted: existing?.muted ?? false,
+    nameSyncPending: existing?.nameSyncPending ?? false,
     createdAt: existing?.createdAt ?? now,
   };
   await upsertContact(contact);

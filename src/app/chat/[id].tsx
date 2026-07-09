@@ -45,7 +45,7 @@ import { listMessages, type Message } from '@/db/repos/messages';
 import { isDbOpen } from '@/db/client';
 import { decryptBodyCached, isChatUnlocked, relockChat } from '@/lock/chat-locks';
 import { subscribeConversationsChanged } from '@/services/data-events';
-import { callDurationParam, retentionLabel, systemMessageKey } from '@/i18n/system-messages';
+import { callDurationParam, nameChangeParams, retentionLabel, systemMessageKey } from '@/i18n/system-messages';
 import {
   acceptRetention,
   acceptScreenshotProtection,
@@ -569,6 +569,7 @@ export default function ConversationScreen() {
                           name: contact.displayName,
                           value: m.body != null ? retentionLabel(Number(m.body), t) : '',
                           duration: callDurationParam(m.kind, m.body),
+                          ...nameChangeParams(m.kind, m.body),
                         })}
                       </Text>
                     </View>

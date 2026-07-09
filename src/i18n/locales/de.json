@@ -383,11 +383,14 @@
     "deleteConfirmBody": "Dies entfernt {{name}}, eure Unterhaltung und alle Nachrichten von diesem Gerät. Es kann nicht rückgängig gemacht werden."
   },
   "system": {
-    "verified": "Ihr habt euch gegenseitig verifiziert. Nachrichten sind freigeschaltet."
+    "verified": "Ihr habt euch gegenseitig verifiziert. Nachrichten sind freigeschaltet.",
+    "nameChanged": "{{oldName}} heißt jetzt {{newName}}."
   },
   "settings": {
     "title": "Einstellungen",
     "identity": "Identität",
+    "name": "Name",
+    "nameHelper": "Deine Kontakte sehen den neuen Namen in euren Chats. Er bleibt teilbar, nicht privat.",
     "myQrCode": "Mein QR-Code",
     "keyFingerprint": "Schlüssel-Fingerabdruck",
     "security": "Sicherheit",

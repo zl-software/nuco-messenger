@@ -57,6 +57,12 @@ export async function migrate(db: DB): Promise<void> {
     if (current < 7 && !(await columnExists(db, 'messages', 'reply_to_id'))) {
       await db.execute('ALTER TABLE messages ADD COLUMN reply_to_id TEXT');
     }
+    // v7 -> v8: display name broadcast. The flag marks a contact whose copy of our name is
+    // stale after a rename; it is cleared per contact once the relay accepts the
+    // profile/name send and drives the resend on reconnect.
+    if (current < 8 && !(await columnExists(db, 'contacts', 'name_sync_pending'))) {
+      await db.execute('ALTER TABLE contacts ADD COLUMN name_sync_pending INTEGER NOT NULL DEFAULT 0');
+    }
     await db.execute(
       'INSERT INTO meta(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
       ['schema_version', String(SCHEMA_VERSION)],

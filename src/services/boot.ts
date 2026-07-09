@@ -7,6 +7,7 @@ import { startRelay, stopRelay, setOnDeliver, setOnRelayStatus, getRelay } from 
 import { initCallService } from './calls';
 import { emitConversationsChanged } from './data-events';
 import { receiveEnvelope, resendPendingOutbound } from './messaging';
+import { resendPendingNameSyncs } from './profile';
 import { initVerificationService, resendPendingConfirms } from './verification';
 import { startExpirySweeper } from './expiry';
 import { resolveServerUrl } from './server';
@@ -24,8 +25,12 @@ function wireRelayCallbacks(): void {
   setOnRelayStatus((status) => {
     useSession.getState().setRelayStatus(status);
     // Re-send unanswered verification confirms on every connect (idempotent), so a lost
-    // or TTL expired confirm never leaves a pair stuck pending.
-    if (status === 'connected') void resendPendingConfirms();
+    // or TTL expired confirm never leaves a pair stuck pending. Same for a rename that
+    // has not reached every contact yet (receivers skip an unchanged name).
+    if (status === 'connected') {
+      void resendPendingConfirms();
+      void resendPendingNameSyncs();
+    }
   });
   setOnDeliver(async (from, envelope) => {
     await receiveEnvelope(from, envelope);

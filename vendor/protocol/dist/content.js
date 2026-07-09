@@ -55,6 +55,13 @@ export const CALL_OFFER_STALE_SECONDS = 120;
 // receiver recomputes it over its own card and ignores the message on mismatch. A sha256
 // digest is 32 bytes, so the base64 form is always exactly 44 characters.
 export const CARD_HASH_LEN = 44;
+// Display name propagation (since 2.6). `profile/name` announces the sender's new display
+// name after a rename, sent once per mutually verified contact. The receiver updates its
+// stored contact name and may show a local note; applying it is cooperative client
+// behavior, and a pre 2.6 peer drops it as unknown content. The display name never
+// participates in the verification cardHash (see above), so a rename cannot break or fake
+// verification. The cap bounds hostile input; clients keep their own tighter entry limits.
+export const NAME_MAX_LEN = 64;
 // Known call end reasons. The wire field stays an open short string so a reason added in a
 // future minor still ends the call on an older peer instead of ringing through the timeout.
 export const CALL_END_REASONS = ['hangup', 'decline', 'busy', 'timeout', 'error'];
@@ -73,6 +80,7 @@ const MESSAGE_CONTENT_TYPE_MAP = {
     'call/end': true,
     'verify/confirm': true,
     'message/delete': true,
+    'profile/name': true,
 };
 export const MESSAGE_CONTENT_TYPES = Object.keys(MESSAGE_CONTENT_TYPE_MAP);
 export function encodeContent(content) {
@@ -151,6 +159,8 @@ function isMessageContent(v) {
             return typeof o.cardHash === 'string' && o.cardHash.length === CARD_HASH_LEN;
         case 'message/delete':
             return isMessageId(o.id);
+        case 'profile/name':
+            return typeof o.name === 'string' && o.name.length > 0 && o.name.length <= NAME_MAX_LEN;
         default:
             return false;
     }

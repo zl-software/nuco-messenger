@@ -29,7 +29,7 @@ import { deleteConversation, getConversation } from '@/db/repos/conversations';
 import { isDbOpen } from '@/db/client';
 import { removeChatLockSecrets } from '@/lock/chat-locks';
 import { emitConversationsChanged, subscribeConversationsChanged } from '@/services/data-events';
-import { callDurationParam, retentionLabel, systemMessageKey } from '@/i18n/system-messages';
+import { callDurationParam, nameChangeParams, retentionLabel, systemMessageKey } from '@/i18n/system-messages';
 import { reconnectRelay } from '@/services/boot';
 import { useSession } from '@/state/session';
 import { useSettings } from '@/state/settings';
@@ -275,6 +275,7 @@ export default function ChatsScreen() {
                   name: item.contact.displayName,
                   value: item.body != null ? retentionLabel(Number(item.body), t) : '',
                   duration: callDurationParam(item.kind, item.body),
+                  ...nameChangeParams(item.kind, item.body),
                 })
               : maskPreviews
                 ? t('chats.hiddenPreview')

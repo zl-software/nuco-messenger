@@ -383,11 +383,14 @@
     "deleteConfirmBody": "This removes {{name}}, your conversation, and all its messages from this device. It cannot be undone."
   },
   "system": {
-    "verified": "You verified each other. Messages are unlocked."
+    "verified": "You verified each other. Messages are unlocked.",
+    "nameChanged": "{{oldName}} changed their name to {{newName}}."
   },
   "settings": {
     "title": "Settings",
     "identity": "Identity",
+    "name": "Name",
+    "nameHelper": "Your contacts see the new name in your chats. It stays shareable, not private.",
     "myQrCode": "My QR code",
     "keyFingerprint": "Key fingerprint",
     "security": "Security",

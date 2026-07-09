@@ -22,6 +22,7 @@ import {
 import { useSession } from '@/state/session';
 import { useSettings } from '@/state/settings';
 import { formatFingerprint } from '@/services/onboarding';
+import { renameAccount } from '@/services/profile';
 import { healthUrlFor, resolveServerUrl } from '@/services/server';
 import { reconnectRelay } from '@/services/boot';
 import { registerPush, unregisterPush } from '@/transport/push';
@@ -56,7 +57,19 @@ export default function SettingsScreen() {
 
   const [conn, setConn] = useState<ConnState>('idle');
   const [autoLockSheet, setAutoLockSheet] = useState(false);
+  const [nameSheet, setNameSheet] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
   const [deleting, setDeleting] = useState(false);
+
+  const nameTrimmed = nameDraft.trim();
+  const canSaveName = nameTrimmed.length > 0 && nameTrimmed !== account?.displayName;
+
+  function saveName() {
+    if (!canSaveName) return;
+    setNameSheet(false);
+    // renameAccount refreshes the session account, so the row (and the QR card) update.
+    void renameAccount(nameTrimmed);
+  }
 
   const fingerprint = account ? formatFingerprint(account.identityKeyB64) : '';
 
@@ -140,6 +153,15 @@ export default function SettingsScreen() {
         {t('settings.identity')}
       </Text>
       <Card>
+        <NavRow
+          label={t('settings.name')}
+          value={account?.displayName}
+          onPress={() => {
+            setNameDraft(account?.displayName ?? '');
+            setNameSheet(true);
+          }}
+        />
+        <Divider />
         <NavRow label={t('settings.myQrCode')} onPress={() => router.push('/add-contact')} />
         <Divider />
         <View style={styles.rowStack}>
@@ -324,6 +346,23 @@ export default function SettingsScreen() {
       </ScrollView>
     </View>
 
+    <BottomSheet visible={nameSheet} title={t('settings.name')} onClose={() => setNameSheet(false)}>
+      <Text variant="bodySecondary" color="textSecondary" style={styles.nameHelper}>
+        {t('settings.nameHelper')}
+      </Text>
+      <TextField
+        value={nameDraft}
+        onChangeText={setNameDraft}
+        placeholder={t('onboarding.namePlaceholder')}
+        maxLength={40}
+        autoFocus
+        autoCapitalize="words"
+        returnKeyType="done"
+        onSubmitEditing={saveName}
+      />
+      <Button label={t('common.save')} onPress={saveName} disabled={!canSaveName} style={styles.nameSave} />
+    </BottomSheet>
+
     <BottomSheet
       visible={autoLockSheet}
       title={t('settings.autoLock')}
@@ -484,6 +523,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     minHeight: 52,
+  },
+  nameHelper: {
+    marginBottom: Spacing.md,
+  },
+  nameSave: {
+    marginTop: Spacing.lg,
   },
   dangerDetail: {
     marginBottom: Spacing.md,

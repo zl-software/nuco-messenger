@@ -76,7 +76,8 @@ export type SystemMessageI18nKey =
   | 'call.rowDeclinedIn'
   | 'call.rowDeclinedOut'
   | 'call.rowFailed'
-  | 'system.verified';
+  | 'system.verified'
+  | 'system.nameChanged';
 
 // The i18n key for a system message row. The caller interpolates { name, value, duration }.
 // Turning the timer off has dedicated keys so the copy never reads "disappear after Off".
@@ -126,7 +127,28 @@ export function systemMessageKey(
       return incoming ? 'call.rowDeclinedIn' : 'call.rowDeclinedOut';
     case 'verified':
       return 'system.verified';
+    case 'name/changed':
+      return 'system.nameChanged';
   }
+}
+
+// Interpolation values for a name change row. The body carries both names as JSON (see
+// MessageKind in the messages repo), so the note stays correct after later renames. Empty
+// string fallbacks keep the template rendering even for a malformed body, and non name
+// kinds always get the fallbacks so callers can spread this unconditionally.
+export function nameChangeParams(kind: MessageKind, body: string | null): { oldName: string; newName: string } {
+  if (kind === 'name/changed' && body != null) {
+    try {
+      const parsed = JSON.parse(body) as { old?: unknown; new?: unknown };
+      return {
+        oldName: typeof parsed.old === 'string' ? parsed.old : '',
+        newName: typeof parsed.new === 'string' ? parsed.new : '',
+      };
+    } catch {
+      // Malformed body: fall through to the fallbacks.
+    }
+  }
+  return { oldName: '', newName: '' };
 }
 
 // m:ss for short calls, h:mm:ss past an hour. Pure so it renders identically in the chat

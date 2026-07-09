@@ -31,7 +31,11 @@ export type MessageKind =
   | 'call/incoming'
   | 'call/missed'
   | 'call/declined'
-  | 'verified';
+  | 'verified'
+  // The peer renamed themselves (receiver side only). The body is a JSON string
+  // {"old":..,"new":..} carrying both names, so the note still reads correctly after
+  // later renames; the row id is the envelope id (redelivery is an INSERT OR IGNORE no-op).
+  | 'name/changed';
 
 export interface Message {
   id: string;

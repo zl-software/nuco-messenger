@@ -21,6 +21,7 @@ export interface Contact {
   cardSpkPub: string | null;
   blocked: boolean;
   muted: boolean;
+  nameSyncPending: boolean;
   createdAt: number;
 }
 
@@ -38,6 +39,7 @@ interface ContactRow {
   card_spk_pub: string | null;
   blocked: number;
   muted: number;
+  name_sync_pending: number;
   created_at: number;
 }
 
@@ -56,6 +58,7 @@ function toContact(r: ContactRow): Contact {
     cardSpkPub: r.card_spk_pub,
     blocked: r.blocked === 1,
     muted: r.muted === 1,
+    nameSyncPending: r.name_sync_pending === 1,
     createdAt: r.created_at,
   };
 }
@@ -79,11 +82,13 @@ export async function getContactByHandle(handle: string): Promise<Contact | null
   return result.rows.length ? toContact(result.rows[0] as unknown as ContactRow) : null;
 }
 
+// name_sync_pending is deliberately absent from the conflict update: a re-scan upsert must
+// not clear (or set) a pending rename broadcast; only the send path touches the flag.
 export async function upsertContact(c: Contact): Promise<void> {
   await getDb().execute(
     `INSERT INTO contacts (id, handle, display_name, identity_pubkey, fingerprint, safety_number, status, verified_at,
-                           local_confirmed_at, peer_confirmed_at, card_spk_pub, blocked, muted, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           local_confirmed_at, peer_confirmed_at, card_spk_pub, blocked, muted, name_sync_pending, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        handle = excluded.handle, display_name = excluded.display_name, identity_pubkey = excluded.identity_pubkey,
        fingerprint = excluded.fingerprint, safety_number = excluded.safety_number, status = excluded.status,
@@ -104,6 +109,7 @@ export async function upsertContact(c: Contact): Promise<void> {
       c.cardSpkPub,
       c.blocked ? 1 : 0,
       c.muted ? 1 : 0,
+      c.nameSyncPending ? 1 : 0,
       c.createdAt,
     ],
   );
@@ -135,6 +141,23 @@ export async function setBlocked(id: string, blocked: boolean): Promise<void> {
 
 export async function setMuted(id: string, muted: boolean): Promise<void> {
   await getDb().execute('UPDATE contacts SET muted = ? WHERE id = ?', [muted ? 1 : 0, id]);
+}
+
+export async function setDisplayName(id: string, displayName: string): Promise<void> {
+  await getDb().execute('UPDATE contacts SET display_name = ? WHERE id = ?', [displayName, id]);
+}
+
+export async function setNameSyncPending(id: string, pending: boolean): Promise<void> {
+  await getDb().execute('UPDATE contacts SET name_sync_pending = ? WHERE id = ?', [pending ? 1 : 0, id]);
+}
+
+// Flag every contact that should learn a new display name: mutually verified (the send
+// gate would reject anyone else) and not blocked. Blocked contacts are never flagged, so
+// one blocked at rename time keeps the old name until the next rename after unblocking.
+export async function markAllNameSyncPending(): Promise<void> {
+  await getDb().execute(
+    'UPDATE contacts SET name_sync_pending = 1 WHERE local_confirmed_at IS NOT NULL AND peer_confirmed_at IS NOT NULL AND blocked = 0',
+  );
 }
 
 export async function deleteContact(id: string): Promise<void> {
