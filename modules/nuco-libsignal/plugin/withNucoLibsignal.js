@@ -5,7 +5,7 @@
 // Node twin used by the crypto selftest). Android consumes the prebuilt AAR from
 // Signal's own Maven repository (Maven Central stopped receiving releases at 0.86.5).
 
-const { withDangerousMod, withProjectBuildGradle } = require('expo/config-plugins');
+const { withAppBuildGradle, withDangerousMod, withProjectBuildGradle } = require('expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 
@@ -49,4 +49,25 @@ function withSignalMaven(config) {
   });
 }
 
-module.exports = (config) => withSignalMaven(withLibsignalPodfile(config));
+// The libsignal-android AAR declares a core library desugaring requirement (its metadata
+// fails the build without it), so the app module needs the desugared JDK libs.
+function withDesugaring(config) {
+  return withAppBuildGradle(config, (config) => {
+    if (!config.modResults.contents.includes('coreLibraryDesugaringEnabled')) {
+      config.modResults.contents +=
+        `\n// org.signal:libsignal-android requires core library desugaring (injected by nuco-libsignal).\n` +
+        `android {\n` +
+        `    compileOptions {\n` +
+        `        coreLibraryDesugaringEnabled true\n` +
+        `    }\n` +
+        `}\n` +
+        `\n` +
+        `dependencies {\n` +
+        `    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'\n` +
+        `}\n`;
+    }
+    return config;
+  });
+}
+
+module.exports = (config) => withDesugaring(withSignalMaven(withLibsignalPodfile(config)));
