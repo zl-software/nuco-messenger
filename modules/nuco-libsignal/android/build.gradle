@@ -10,6 +10,10 @@ def libsignalPin = new groovy.json.JsonSlurper().parse(new File(projectDir, '../
 
 android {
   namespace "expo.modules.nucolibsignal"
+  defaultConfig {
+    versionCode 1
+    versionName "1.0.0"
+  }
 }
 
 repositories {
