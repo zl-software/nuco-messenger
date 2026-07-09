@@ -1,0 +1,24 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.nucolibsignal'
+version = '1.0.0'
+
+def libsignalPin = new groovy.json.JsonSlurper().parse(new File(projectDir, '../libsignal.json'))
+
+android {
+  namespace "expo.modules.nucolibsignal"
+}
+
+repositories {
+  // Official libsignal artifacts moved off Maven Central at 0.87.0; the config plugin
+  // also injects this repository into the app project for resolution modes that ignore
+  // module level repositories.
+  maven { url 'https://build-artifacts.signal.org/libraries/maven/' }
+}
+
+dependencies {
+  implementation "org.signal:libsignal-android:${libsignalPin.version}"
+}

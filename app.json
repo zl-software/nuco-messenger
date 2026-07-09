@@ -94,7 +94,17 @@
         {
           "microphonePermission": "Nuco uses the microphone only during calls. Audio is end to end encrypted."
         }
-      ]
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static",
+            "networkInspector": false
+          }
+        }
+      ],
+      "./modules/nuco-libsignal/app.plugin.js"
     ],
     "experiments": {
       "typedRoutes": true,

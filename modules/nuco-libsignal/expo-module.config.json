@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["NucoLibsignalModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.nucolibsignal.NucoLibsignalModule"]
+  }
+}
