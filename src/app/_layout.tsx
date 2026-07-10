@@ -19,6 +19,7 @@ import { initI18n } from '@/i18n';
 import { useSettings } from '@/state/settings';
 import { useSession } from '@/state/session';
 import { attachAppStateGate, subscribeLock } from '@/lock/lock-controller';
+import { initCallKitWakeGuard } from '@/services/calls';
 import { stopExpirySweeper } from '@/services/expiry';
 import { resetIfReinstalled } from '@/services/reinstall';
 import { configureNotifications } from '@/transport/push';
@@ -33,6 +34,9 @@ export default function RootLayout() {
   const setAccount = useSession((s) => s.setAccount);
 
   useEffect(() => {
+    // A VoIP push may have launched this app LOCKED with a natively reported call on the
+    // lock screen; arm the unanswered guard before any unlock happens.
+    initCallKitWakeGuard();
     if (__DEV__) {
       // Add a "Clear Nuco keys & restart" item to the shake dev menu.
       import('expo-dev-menu')

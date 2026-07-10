@@ -10,10 +10,11 @@
 
 import * as Crypto from 'expo-crypto';
 
+import { getCallKit, type CallEndReport } from '@/calls/callkit';
 import { createCallController, type CallController } from '@/calls/controller';
 import { createNativeEngine } from '@/calls/engine';
 import { createNativeCallAudio } from '@/calls/audio';
-import type { CallRowInput } from '@/calls/types';
+import type { CallRowInput, CallStatus, CallUiEndReason, CallUiSnapshot } from '@/calls/types';
 import { ensureConversation, getConversation } from '@/db/repos/conversations';
 import { insertMessage } from '@/db/repos/messages';
 import { setAutoLockDeferral, setPreLockHook } from '@/lock/lock-controller';
@@ -21,9 +22,148 @@ import { useCall } from '@/state/call';
 import { emitConversationsChanged } from './data-events';
 import { expiryFor, sendContent, setCallSignalHandler } from './messaging';
 import { getRelay } from './relay';
+import { registerPush } from '@/transport/push';
 import { getContactByHandle, isMutuallyVerified } from '@/db/repos/contacts';
 
 let controller: CallController | null = null;
+
+// --- CallKit mirroring ---
+//
+// The controller stays Node pure; everything CallKit is glued on here by watching the
+// snapshot transitions. Exactly one call exists at a time (the controller enforces it,
+// and the CXProvider is configured to match), so the mapping to CallKit is a single
+// current uuid. A call reported natively from a VoIP push (locked phone, killed app)
+// sits in the module's pending list until the sealed offer decrypts post unlock and the
+// ring claims it; the wake guard below ends unclaimed ones as unanswered so the lock
+// screen never rings forever on a call that expired at the relay.
+
+const VOIP_CLAIM_WINDOW_MS = 60_000;
+
+let callkitUuid: string | null = null;
+let endedFromCallKit = false;
+let prevStatus: CallStatus = 'idle';
+const claimTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function mapEndReason(reason: CallUiEndReason | null): CallEndReport {
+  switch (reason) {
+    case 'no-answer':
+    case 'canceled':
+      return 'unanswered';
+    case 'connection-lost':
+    case 'no-turn':
+    case 'mic-failed':
+    case 'failed':
+      return 'failed';
+    default:
+      return 'remoteEnded';
+  }
+}
+
+function guardPendingCall(uuid: string, reportedAt: number): void {
+  if (claimTimers.has(uuid)) return;
+  const remaining = Math.max(1000, reportedAt + VOIP_CLAIM_WINDOW_MS - Date.now());
+  claimTimers.set(
+    uuid,
+    setTimeout(() => {
+      claimTimers.delete(uuid);
+      const callkit = getCallKit();
+      callkit.reportEnded(uuid, 'unanswered');
+      callkit.consumePending(uuid);
+    }, remaining),
+  );
+}
+
+function clearClaimTimer(uuid: string): void {
+  const timer = claimTimers.get(uuid);
+  if (timer) clearTimeout(timer);
+  claimTimers.delete(uuid);
+}
+
+// Runs pre unlock (from the root layout): a VoIP push may have launched a LOCKED app,
+// and the natively reported call must not ring past the claim window even if the user
+// never unlocks. Safe before unlock: touches only the CallKit bridge, never the db.
+export function initCallKitWakeGuard(): void {
+  const callkit = getCallKit();
+  if (!callkit.available) return;
+  for (const pending of callkit.pendingCalls()) {
+    guardPendingCall(pending.uuid, pending.reportedAt);
+  }
+}
+
+async function syncCallKit(snap: CallUiSnapshot): Promise<void> {
+  const callkit = getCallKit();
+  if (!callkit.available) return;
+  const was = prevStatus;
+  prevStatus = snap.status;
+  if (snap.status === was) return;
+
+  if (snap.status === 'incoming-ringing') {
+    endedFromCallKit = false;
+    // A VoIP wake already reported this call natively; claim the oldest pending one
+    // instead of reporting a duplicate. The generic "Nuco" caller becomes the contact.
+    const pending = callkit.pendingCalls()[0];
+    if (pending) {
+      clearClaimTimer(pending.uuid);
+      callkit.consumePending(pending.uuid);
+      callkitUuid = pending.uuid;
+      callkit.updateCaller(pending.uuid, snap.contactName);
+      if (pending.answered) void controller?.answer();
+    } else {
+      callkitUuid = await callkit.reportIncoming(snap.contactName);
+    }
+    return;
+  }
+  if (snap.status === 'starting' && snap.direction === 'out') {
+    endedFromCallKit = false;
+    callkitUuid = await callkit.startOutgoing(snap.contactName);
+    return;
+  }
+  if (snap.status === 'active' && snap.direction === 'out' && callkitUuid) {
+    callkit.reportConnected(callkitUuid);
+    return;
+  }
+  if (snap.status === 'ending' || snap.status === 'idle') {
+    const uuid = callkitUuid;
+    callkitUuid = null;
+    if (uuid && !endedFromCallKit) {
+      callkit.reportEnded(uuid, mapEndReason(snap.endReason));
+    }
+    endedFromCallKit = false;
+  }
+}
+
+function initCallKit(instance: CallController): void {
+  const callkit = getCallKit();
+  if (!callkit.available) return;
+  callkit.init({
+    onAnswer: (uuid) => {
+      if (uuid === callkitUuid) void instance.answer();
+      // A pending (unclaimed) answer is remembered natively and honored at claim time.
+    },
+    onEnd: (uuid) => {
+      clearClaimTimer(uuid);
+      if (uuid === callkitUuid) {
+        endedFromCallKit = true;
+        instance.hangUp();
+      }
+    },
+    onMuted: (uuid, muted) => {
+      if (uuid === callkitUuid) instance.setMuted(muted);
+    },
+    onVoipToken: () => {
+      // Re-register so the relay learns the fresh token (or its loss).
+      void registerPush();
+    },
+    onVoipPush: (uuid) => {
+      // The offer should follow over the socket; if it never decrypts (locked app the
+      // user ignores, expired offer), the guard ends the native call as unanswered.
+      for (const pending of callkit.pendingCalls()) {
+        if (pending.uuid === uuid) guardPendingCall(pending.uuid, pending.reportedAt);
+      }
+    },
+  });
+  initCallKitWakeGuard();
+}
 
 // A summary row at a call's terminal transition. The row id is the callId, so INSERT OR
 // IGNORE dedupes every double write path (both glare orderings, redelivered end markers).
@@ -73,7 +213,10 @@ export function initCallService(): void {
       return contact != null && isMutuallyVerified(contact);
     },
     writeCallRow,
-    onState: (snap) => useCall.getState().set(snap),
+    onState: (snap) => {
+      useCall.getState().set(snap);
+      void syncCallKit(snap);
+    },
     newId: () => Crypto.randomUUID(),
     now: () => Date.now(),
     isRelayConnected: () => getRelay()?.isConnected() ?? false,
@@ -82,6 +225,7 @@ export function initCallService(): void {
   setCallSignalHandler((from, signal, sentAt) => instance.handleCallSignal(from, signal, sentAt));
   setAutoLockDeferral(() => instance.isInCall());
   setPreLockHook(() => instance.onAppLocking());
+  initCallKit(instance);
 }
 
 export function getCallController(): CallController {

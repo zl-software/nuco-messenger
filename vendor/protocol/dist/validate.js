@@ -56,7 +56,13 @@ function isPushRegistration(v) {
         return false;
     if (v.apnsTopic !== undefined && !(isStr(v.apnsTopic) && v.apnsTopic.length <= LIMITS.apnsTopicMaxLen))
         return false;
+    if (v.voipToken !== undefined && !(isStr(v.voipToken) && v.voipToken.length <= LIMITS.pushTokenMaxLen))
+        return false;
     return true;
+}
+const WAKE_HINTS = ['alert', 'voip', 'none'];
+function isWakeHint(v) {
+    return isStr(v) && WAKE_HINTS.includes(v);
 }
 // Shape check only. The kind is not restricted to known values here so a future
 // attestation scheme stays a minor version; the relay decides which kinds it accepts.
@@ -142,7 +148,18 @@ export function parseClientMessage(raw) {
                 return MALFORMED;
             if (!isEnvelope(v.envelope))
                 return MALFORMED;
-            return { ok: true, message: { type: 'send', rid: v.rid, to: v.to, envelope: v.envelope } };
+            if (v.wake !== undefined && !isWakeHint(v.wake))
+                return MALFORMED;
+            return {
+                ok: true,
+                message: {
+                    type: 'send',
+                    rid: v.rid,
+                    to: v.to,
+                    envelope: v.envelope,
+                    ...(v.wake !== undefined ? { wake: v.wake } : {}),
+                },
+            };
         }
         case 'ack': {
             if (!isNonEmptyStr(v.id) || v.id.length > LIMITS.idMaxLen)

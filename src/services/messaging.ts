@@ -5,7 +5,7 @@
 
 import * as Crypto from 'expo-crypto';
 
-import { encodeContent, decodeContent, type MessageContent, type MessageEnvelope } from '@nuco/protocol';
+import { encodeContent, decodeContent, type MessageContent, type MessageEnvelope, type WakeHint } from '@nuco/protocol';
 import { IdentityChangedError } from '@/crypto';
 import {
   getContactByHandle,
@@ -138,6 +138,29 @@ export async function insertVerifiedSystemRow(
 // the call service for signaling and the verification service for confirms, so it is
 // exported. This is the single send side gate: nothing but verify/confirm may leave for
 // a contact who has not completed mutual verification.
+// How an OFFLINE recipient is woken for this content (protocol 3.1). The envelope is
+// sealed, so the sender must classify: user visible events banner ('alert'), an incoming
+// call rings via PushKit ('voip'), and invisible control traffic queues silently
+// ('none'). Without the hint every confirm resend, name sync, or call teardown produced
+// a phantom "New message" banner on a closed app with nothing to show for it.
+function wakeHintFor(content: MessageContent): WakeHint {
+  switch (content.t) {
+    case 'text':
+    case 'retention/request':
+    case 'retention/accept':
+    case 'screenshot/request':
+    case 'screenshot/accept':
+      return 'alert';
+    case 'call/offer':
+      return 'voip';
+    default:
+      // verify/confirm, call/accept, call/answer, call/end, retention/cancel,
+      // screenshot/cancel, message/delete, profile/name: nothing a closed app could
+      // show; the envelope delivers on the next connect.
+      return 'none';
+  }
+}
+
 export async function sendContent(handle: string, content: MessageContent, id: string): Promise<void> {
   if (content.t !== 'verify/confirm') {
     const contact = await getContactByHandle(handle);
@@ -146,7 +169,11 @@ export async function sendContent(handle: string, content: MessageContent, id: s
   const sealed = await getSignal().encrypt(handle, encodeContent(content));
   const relay = getRelay();
   if (!relay) throw new Error('relay not started');
-  await relay.sendEnvelope(handle, { id, ciphertext: sealed.ciphertext, messageType: sealed.messageType, sentAt: Date.now() });
+  await relay.sendEnvelope(
+    handle,
+    { id, ciphertext: sealed.ciphertext, messageType: sealed.messageType, sentAt: Date.now() },
+    wakeHintFor(content),
+  );
 }
 
 // conversation id is the contact id (one to one). replyTo quotes an earlier text by the

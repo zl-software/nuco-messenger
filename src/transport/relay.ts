@@ -13,6 +13,7 @@ import {
   type MessageEnvelope,
   type PushRegistration,
   type RegisterAttestation,
+  type WakeHint,
   type ErrorCodeValue,
 } from '@nuco/protocol';
 
@@ -73,7 +74,7 @@ const BACKOFF_MAX_MS = 30000;
 const REQUEST_TIMEOUT_MS = 20000;
 
 type PendingResolver = { resolve: (m: ServerMessage) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> };
-type OutboundItem = { to: string; envelope: MessageEnvelope; resolve: () => void; reject: (e: Error) => void };
+type OutboundItem = { to: string; envelope: MessageEnvelope; wake?: WakeHint; resolve: () => void; reject: (e: Error) => void };
 
 export class RelayClient {
   private ws: WebSocketLike | null = null;
@@ -190,9 +191,9 @@ export class RelayClient {
 
   // Hand a sealed envelope to the relay. Resolves when the relay accepts it; queued while
   // offline and flushed on reconnect.
-  sendEnvelope(to: string, envelope: MessageEnvelope): Promise<void> {
+  sendEnvelope(to: string, envelope: MessageEnvelope, wake?: WakeHint): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.outbound.push({ to, envelope, resolve, reject });
+      this.outbound.push({ to, envelope, wake, resolve, reject });
       if (this.status === 'connected') void this.flushOutbound();
     });
   }
@@ -380,7 +381,7 @@ export class RelayClient {
     while (this.outbound.length > 0 && this.status === 'connected') {
       const item = this.outbound[0]!;
       try {
-        await this.request((rid) => ({ type: 'send', rid, to: item.to, envelope: item.envelope }));
+        await this.request((rid) => ({ type: 'send', rid, to: item.to, envelope: item.envelope, ...(item.wake !== undefined ? { wake: item.wake } : {}) }));
         this.outbound.shift();
         item.resolve();
       } catch (err) {

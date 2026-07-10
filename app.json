@@ -29,7 +29,8 @@
         "NSMicrophoneUsageDescription": "Nuco uses the microphone only during calls. Audio is end to end encrypted.",
         "UIBackgroundModes": [
           "remote-notification",
-          "audio"
+          "audio",
+          "voip"
         ]
       }
     },

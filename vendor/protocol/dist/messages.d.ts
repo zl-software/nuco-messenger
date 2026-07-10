@@ -6,7 +6,9 @@ export interface PushRegistration {
     readonly token?: string;
     readonly endpoint?: string;
     readonly apnsTopic?: string;
+    readonly voipToken?: string;
 }
+export type WakeHint = 'alert' | 'voip' | 'none';
 export type CipherMessageType = 'prekey' | 'whisper';
 export interface MessageEnvelope {
     readonly id: string;
@@ -41,6 +43,7 @@ export interface SendMsg {
     readonly rid: string;
     readonly to: string;
     readonly envelope: MessageEnvelope;
+    readonly wake?: WakeHint;
 }
 export interface AckMsg {
     readonly type: 'ack';

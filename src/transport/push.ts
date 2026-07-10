@@ -15,6 +15,7 @@ import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 
 import type { PushRegistration } from '@nuco/protocol';
+import { getCallKit } from '@/calls/callkit';
 import { getRelay } from '@/services/relay';
 import { registerParamsFor, loadAccount } from '@/services/account';
 import { isUnlocked } from '@/lock/lock-controller';
@@ -63,7 +64,15 @@ export async function registerPush(): Promise<void> {
   if (Platform.OS === 'ios') {
     try {
       const token = await Notifications.getDevicePushTokenAsync();
-      push = { kind: 'apns', token: String(token.data), apnsTopic: getBundleId() };
+      // The PushKit VoIP token rides along when the CallKit module is present, so an
+      // offline callee's phone can ring from the lock screen (wake hint 'voip').
+      const voipToken = getCallKit().getVoipToken();
+      push = {
+        kind: 'apns',
+        token: String(token.data),
+        apnsTopic: getBundleId(),
+        ...(voipToken ? { voipToken } : {}),
+      };
     } catch {
       push = { kind: 'none' };
     }
