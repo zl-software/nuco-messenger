@@ -183,6 +183,13 @@ function initCallKit(instance: CallController): void {
         if (pending.uuid === uuid) guardPendingCall(pending.uuid, pending.reportedAt);
       }
     },
+    onSpeakerRoute: (speaker) => {
+      // The CallKit UI routes audio without telling the app; keep the in app speaker
+      // toggle truthful. Same value writes are no-ops route-wise, so no feedback loop.
+      if (instance.isInCall() && useCall.getState().speaker !== speaker) {
+        instance.setSpeaker(speaker);
+      }
+    },
   });
   initCallKitWakeGuard();
 }

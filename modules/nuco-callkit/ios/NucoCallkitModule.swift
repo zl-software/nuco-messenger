@@ -68,6 +68,20 @@ final class CallCenter: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
     if let token = registry.pushToken(for: .voIP) {
       voipToken = hex(token)
     }
+
+    // The CallKit speaker button changes the route without telling the app; mirror route
+    // changes to JS so the in app speaker toggle always shows the truth.
+    NotificationCenter.default.addObserver(
+      forName: AVAudioSession.routeChangeNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      guard let self else { return }
+      let speaker = AVAudioSession.sharedInstance().currentRoute.outputs.contains {
+        $0.portType == .builtInSpeaker
+      }
+      self.emit("onSpeakerRoute", ["speaker": speaker])
+    }
   }
 
   private func hex(_ data: Data) -> String {
@@ -235,13 +249,19 @@ final class CallCenter: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
   // answer: the sealed offer decrypts only post unlock, minutes after didActivate). The
   // unit never saw the activation, so re-hand the session over and cycle the enable flag
   // to start it. Called by JS when the call reaches active; harmless when the unit was
-  // already live (an inaudible re-attach at connect time).
+  // already live (an inaudible re-attach at connect time). Cycling the unit clears any
+  // output route override the user already made (the CallKit speaker button is exactly
+  // that), so the speaker route is captured and re-applied.
   func refreshAudio() {
     guard let session = activeAudioSession else { return }
+    let wasSpeaker = session.currentRoute.outputs.contains { $0.portType == .builtInSpeaker }
     let rtcSession = RTCAudioSession.sharedInstance()
     rtcSession.audioSessionDidActivate(session)
     rtcSession.isAudioEnabled = false
     rtcSession.isAudioEnabled = true
+    if wasSpeaker {
+      try? session.overrideOutputAudioPort(.speaker)
+    }
   }
 
   // --- JS facing operations (called through the module) ---
@@ -345,7 +365,7 @@ public class NucoCallkitAppDelegate: ExpoAppDelegateSubscriber {
 public class NucoCallkitModule: Module {
   public func definition() -> ModuleDefinition {
     Name("NucoCallkit")
-    Events("onVoipToken", "onVoipPush", "onAnswer", "onEnd", "onMuted", "onStartCall", "onAudioActivated", "onAudioDeactivated", "onReset")
+    Events("onVoipToken", "onVoipPush", "onAnswer", "onEnd", "onMuted", "onStartCall", "onAudioActivated", "onAudioDeactivated", "onSpeakerRoute", "onReset")
 
     OnCreate {
       CallCenter.shared.module = self

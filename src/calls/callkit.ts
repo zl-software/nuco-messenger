@@ -16,6 +16,7 @@ export interface CallKitEvents {
   onMuted: (uuid: string, muted: boolean) => void;
   onVoipToken: (token: string | null) => void;
   onVoipPush: (uuid: string) => void;
+  onSpeakerRoute: (speaker: boolean) => void;
 }
 
 export interface CallKitBridge {
@@ -60,6 +61,7 @@ function makeBridge(native: NucoCallkitNative): CallKitBridge {
         events.onVoipToken(token);
       });
       native.addListener('onVoipPush', (e) => events.onVoipPush(String(e.uuid)));
+      native.addListener('onSpeakerRoute', (e) => events.onSpeakerRoute(e.speaker === true));
     },
     getVoipToken: () => native.getVoipToken(),
     pendingCalls: () => native.getPendingCalls(),
