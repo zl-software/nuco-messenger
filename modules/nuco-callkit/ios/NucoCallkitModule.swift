@@ -139,8 +139,14 @@ final class CallCenter: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
 
   func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
     if pendingCalls.contains(where: { $0.uuid == action.callUUID }) {
-      // Answered before JS claimed it (locked phone): remember, JS auto accepts on claim.
+      // Answered before JS claimed it: the app is locked (or still booting) and cannot
+      // decrypt the offer or seal the accept until Face ID. Remember the answer (JS auto
+      // accepts on claim) and tell the person WHY nothing connects yet, right on the
+      // native call screen. The real caller name replaces this after unlock.
       unclaimedAnswers.insert(action.callUUID)
+      let update = CXCallUpdate()
+      update.localizedCallerName = NSLocalizedString("Unlock Nuco to connect the call", comment: "")
+      provider.reportCall(with: action.callUUID, updated: update)
     }
     configureRtcAudio()
     emit("onAnswer", ["uuid": action.callUUID.uuidString])
