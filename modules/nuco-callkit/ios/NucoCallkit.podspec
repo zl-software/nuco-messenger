@@ -12,6 +12,10 @@ Pod::Spec.new do |s|
   s.static_framework = true
 
   s.dependency 'ExpoModulesCore'
+  # The WebRTC framework react-native-webrtc ships: CallKit owns AVAudioSession
+  # activation, and RTCAudioSession must be driven from the provider callbacks (manual
+  # audio) or calls stay silent.
+  s.dependency 'JitsiWebRTC'
 
   s.frameworks = 'CallKit', 'PushKit', 'AVFAudio'
 

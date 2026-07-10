@@ -20,6 +20,7 @@ export interface NucoCallkitNative {
   startOutgoingCall(calleeName: string): Promise<string>;
   reportOutgoingConnected(uuid: string): void;
   endCallLocal(uuid: string): Promise<void>;
+  answerCallLocal(uuid: string): Promise<void>;
   reportCallEnded(
     uuid: string,
     reason: 'remoteEnded' | 'unanswered' | 'failed' | 'answeredElsewhere' | 'declinedElsewhere',

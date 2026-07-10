@@ -29,6 +29,7 @@ export interface CallKitBridge {
   startOutgoing(calleeName: string): Promise<string | null>;
   reportConnected(uuid: string): void;
   reportEnded(uuid: string, reason: CallEndReport): void;
+  answerLocal(uuid: string): Promise<void>;
 }
 
 const NOOP: CallKitBridge = {
@@ -42,6 +43,7 @@ const NOOP: CallKitBridge = {
   startOutgoing: async () => null,
   reportConnected: () => undefined,
   reportEnded: () => undefined,
+  answerLocal: async () => undefined,
 };
 
 function makeBridge(native: NucoCallkitNative): CallKitBridge {
@@ -77,6 +79,13 @@ function makeBridge(native: NucoCallkitNative): CallKitBridge {
     },
     reportConnected: (uuid) => native.reportOutgoingConnected(uuid),
     reportEnded: (uuid, reason) => native.reportCallEnded(uuid, reason),
+    answerLocal: async (uuid) => {
+      try {
+        await native.answerCallLocal(uuid);
+      } catch {
+        // The system call UI just lags behind; the call itself proceeds.
+      }
+    },
   };
 }
 

@@ -14,6 +14,7 @@ import CallKit
 import ExpoModulesCore
 import Foundation
 import PushKit
+import WebRTC
 
 // Process wide call state, alive from didFinishLaunching on, independent of the JS
 // runtime and the Expo module lifecycle.
@@ -35,6 +36,13 @@ final class CallCenter: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
 
   func start() {
     guard registry == nil else { return }
+
+    // CallKit decides when the audio session activates; WebRTC must not start its audio
+    // unit on its own or the session fights CallKit and the call stays silent. Manual
+    // audio: the unit runs only between didActivate and didDeactivate below.
+    let rtcSession = RTCAudioSession.sharedInstance()
+    rtcSession.useManualAudio = true
+    rtcSession.isAudioEnabled = false
 
     let configuration = CXProviderConfiguration()
     configuration.supportsVideo = false
@@ -145,10 +153,16 @@ final class CallCenter: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
   }
 
   func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
+    let rtcSession = RTCAudioSession.sharedInstance()
+    rtcSession.audioSessionDidActivate(audioSession)
+    rtcSession.isAudioEnabled = true
     emit("onAudioActivated", [:])
   }
 
   func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
+    let rtcSession = RTCAudioSession.sharedInstance()
+    rtcSession.audioSessionDidDeactivate(audioSession)
+    rtcSession.isAudioEnabled = false
     emit("onAudioDeactivated", [:])
   }
 
@@ -210,6 +224,14 @@ final class CallCenter: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
 
   func endLocal(uuid: UUID, completion: @escaping () -> Void) {
     let action = CXEndCallAction(call: uuid)
+    callController.request(CXTransaction(action: action)) { _ in completion() }
+  }
+
+  // The app UI accepted a ringing call: route it through CallKit so the system call UI
+  // follows (dismisses the incoming banner, shows the active call). The provider
+  // delegate's performAnswerCallAction fires as usual; the JS side keeps that idempotent.
+  func answerLocal(uuid: UUID, completion: @escaping () -> Void) {
+    let action = CXAnswerCallAction(call: uuid)
     callController.request(CXTransaction(action: action)) { _ in completion() }
   }
 
@@ -306,6 +328,16 @@ public class NucoCallkitModule: Module {
         return
       }
       CallCenter.shared.endLocal(uuid: parsed) {
+        promise.resolve(nil)
+      }
+    }
+
+    AsyncFunction("answerCallLocal") { (uuid: String, promise: Promise) in
+      guard let parsed = UUID(uuidString: uuid) else {
+        promise.resolve(nil)
+        return
+      }
+      CallCenter.shared.answerLocal(uuid: parsed) {
         promise.resolve(nil)
       }
     }

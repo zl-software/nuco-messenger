@@ -41,6 +41,7 @@ const VOIP_CLAIM_WINDOW_MS = 60_000;
 
 let callkitUuid: string | null = null;
 let endedFromCallKit = false;
+let answeredFromCallKit = false;
 let prevStatus: CallStatus = 'idle';
 const claimTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -99,6 +100,7 @@ async function syncCallKit(snap: CallUiSnapshot): Promise<void> {
 
   if (snap.status === 'incoming-ringing') {
     endedFromCallKit = false;
+    answeredFromCallKit = false;
     // A VoIP wake already reported this call natively; claim the oldest pending one
     // instead of reporting a duplicate. The generic "Nuco" caller becomes the contact.
     const pending = callkit.pendingCalls()[0];
@@ -107,7 +109,10 @@ async function syncCallKit(snap: CallUiSnapshot): Promise<void> {
       callkit.consumePending(pending.uuid);
       callkitUuid = pending.uuid;
       callkit.updateCaller(pending.uuid, snap.contactName);
-      if (pending.answered) void controller?.answer();
+      if (pending.answered) {
+        answeredFromCallKit = true;
+        void controller?.answer();
+      }
     } else {
       callkitUuid = await callkit.reportIncoming(snap.contactName);
     }
@@ -115,8 +120,18 @@ async function syncCallKit(snap: CallUiSnapshot): Promise<void> {
   }
   if (snap.status === 'starting' && snap.direction === 'out') {
     endedFromCallKit = false;
+    answeredFromCallKit = false;
     callkitUuid = await callkit.startOutgoing(snap.contactName);
     return;
+  }
+  if (was === 'incoming-ringing' && (snap.status === 'connecting' || snap.status === 'active')) {
+    // Accepted through the APP UI: route the answer through CallKit too, so the system
+    // call banner flips to the active call instead of ringing on. performAnswerCallAction
+    // fires again, but the controller's answer() is a no-op outside incoming-ringing.
+    if (callkitUuid && !answeredFromCallKit) {
+      void callkit.answerLocal(callkitUuid);
+    }
+    if (snap.status !== 'active') return;
   }
   if (snap.status === 'active' && snap.direction === 'out' && callkitUuid) {
     callkit.reportConnected(callkitUuid);
@@ -137,7 +152,10 @@ function initCallKit(instance: CallController): void {
   if (!callkit.available) return;
   callkit.init({
     onAnswer: (uuid) => {
-      if (uuid === callkitUuid) void instance.answer();
+      if (uuid === callkitUuid) {
+        answeredFromCallKit = true;
+        void instance.answer();
+      }
       // A pending (unclaimed) answer is remembered natively and honored at claim time.
     },
     onEnd: (uuid) => {
