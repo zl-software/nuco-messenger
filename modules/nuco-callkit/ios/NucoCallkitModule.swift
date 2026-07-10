@@ -29,6 +29,11 @@ final class CallCenter: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
   // The AVAudioSession CallKit activated, kept so a WebRTC audio unit created LATER
   // (locked phone: the offer decrypts only after unlock) can still be attached to it.
   private var activeAudioSession: AVAudioSession?
+  // Speaks the unlock hint into the freshly activated call audio after an unclaimed
+  // answer (the visual hint alone is easy to miss with the phone at the ear).
+  private let speech = AVSpeechSynthesizer()
+  private var unlockHintTimer: Timer?
+  private var unlockHintRepeats = 0
   // Calls reported from a VoIP push that JS has not claimed yet, newest last. Values are
   // epoch ms of the report, so JS can expire stale ones.
   private(set) var pendingCalls: [(uuid: UUID, reportedAt: Int64)] = []
@@ -125,6 +130,7 @@ final class CallCenter: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
   func providerDidReset(_ provider: CXProvider) {
     pendingCalls.removeAll()
     unclaimedAnswers.removeAll()
+    stopUnlockHintSpeech()
     emit("onReset", [:])
   }
 
@@ -156,6 +162,9 @@ final class CallCenter: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
   func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
     pendingCalls.removeAll { $0.uuid == action.callUUID }
     unclaimedAnswers.remove(action.callUUID)
+    if unclaimedAnswers.isEmpty {
+      stopUnlockHintSpeech()
+    }
     emit("onEnd", ["uuid": action.callUUID.uuidString])
     action.fulfill()
   }
@@ -177,7 +186,41 @@ final class CallCenter: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
     let rtcSession = RTCAudioSession.sharedInstance()
     rtcSession.audioSessionDidActivate(audioSession)
     rtcSession.isAudioEnabled = true
+    if !unclaimedAnswers.isEmpty {
+      startUnlockHintSpeech()
+    }
     emit("onAudioActivated", [:])
+  }
+
+  // The spoken counterpart of the on screen hint: the app is locked, so the answered
+  // call cannot connect until Face ID. Uses the system voice in the app's language;
+  // repeats a couple of times, stops the moment the call is claimed or ends.
+  private func startUnlockHintSpeech() {
+    unlockHintRepeats = 0
+    speakUnlockHint()
+    unlockHintTimer?.invalidate()
+    unlockHintTimer = Timer.scheduledTimer(withTimeInterval: 7, repeats: true) { [weak self] _ in
+      guard let self else { return }
+      self.unlockHintRepeats += 1
+      if self.unclaimedAnswers.isEmpty || self.unlockHintRepeats >= 3 {
+        self.stopUnlockHintSpeech()
+        return
+      }
+      self.speakUnlockHint()
+    }
+  }
+
+  private func speakUnlockHint() {
+    let utterance = AVSpeechUtterance(string: NSLocalizedString("Unlock Nuco to connect the call", comment: ""))
+    let language = Bundle.main.preferredLocalizations.first ?? "en"
+    utterance.voice = AVSpeechSynthesisVoice(language: language.hasPrefix("de") ? "de-DE" : "en-US")
+    speech.speak(utterance)
+  }
+
+  private func stopUnlockHintSpeech() {
+    unlockHintTimer?.invalidate()
+    unlockHintTimer = nil
+    speech.stopSpeaking(at: .immediate)
   }
 
   func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
@@ -217,6 +260,9 @@ final class CallCenter: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
   func consumePending(_ uuid: UUID) {
     pendingCalls.removeAll { $0.uuid == uuid }
     unclaimedAnswers.remove(uuid)
+    if unclaimedAnswers.isEmpty {
+      stopUnlockHintSpeech()
+    }
   }
 
   func reportIncoming(callerName: String, completion: @escaping (UUID?) -> Void) {
