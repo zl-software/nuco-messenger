@@ -30,6 +30,7 @@ export interface CallKitBridge {
   reportConnected(uuid: string): void;
   reportEnded(uuid: string, reason: CallEndReport): void;
   answerLocal(uuid: string): Promise<void>;
+  refreshAudio(): void;
 }
 
 const NOOP: CallKitBridge = {
@@ -44,6 +45,7 @@ const NOOP: CallKitBridge = {
   reportConnected: () => undefined,
   reportEnded: () => undefined,
   answerLocal: async () => undefined,
+  refreshAudio: () => undefined,
 };
 
 function makeBridge(native: NucoCallkitNative): CallKitBridge {
@@ -86,6 +88,7 @@ function makeBridge(native: NucoCallkitNative): CallKitBridge {
         // The system call UI just lags behind; the call itself proceeds.
       }
     },
+    refreshAudio: () => native.refreshAudioSession(),
   };
 }
 

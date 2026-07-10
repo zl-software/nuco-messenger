@@ -26,6 +26,9 @@ final class CallCenter: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
   private let callController = CXCallController()
 
   private(set) var voipToken: String?
+  // The AVAudioSession CallKit activated, kept so a WebRTC audio unit created LATER
+  // (locked phone: the offer decrypts only after unlock) can still be attached to it.
+  private var activeAudioSession: AVAudioSession?
   // Calls reported from a VoIP push that JS has not claimed yet, newest last. Values are
   // epoch ms of the report, so JS can expire stale ones.
   private(set) var pendingCalls: [(uuid: UUID, reportedAt: Int64)] = []
@@ -125,11 +128,21 @@ final class CallCenter: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
     emit("onReset", [:])
   }
 
+  // The session category WebRTC voice expects, set inside the action handlers (Apple's
+  // contract: configure here, the activation itself arrives in didActivate).
+  private func configureRtcAudio() {
+    let rtcSession = RTCAudioSession.sharedInstance()
+    rtcSession.lockForConfiguration()
+    try? rtcSession.setConfiguration(RTCAudioSessionConfiguration.webRTC())
+    rtcSession.unlockForConfiguration()
+  }
+
   func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
     if pendingCalls.contains(where: { $0.uuid == action.callUUID }) {
       // Answered before JS claimed it (locked phone): remember, JS auto accepts on claim.
       unclaimedAnswers.insert(action.callUUID)
     }
+    configureRtcAudio()
     emit("onAnswer", ["uuid": action.callUUID.uuidString])
     action.fulfill()
   }
@@ -147,12 +160,14 @@ final class CallCenter: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
   }
 
   func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
+    configureRtcAudio()
     provider.reportOutgoingCall(with: action.callUUID, startedConnectingAt: nil)
     emit("onStartCall", ["uuid": action.callUUID.uuidString])
     action.fulfill()
   }
 
   func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
+    activeAudioSession = audioSession
     let rtcSession = RTCAudioSession.sharedInstance()
     rtcSession.audioSessionDidActivate(audioSession)
     rtcSession.isAudioEnabled = true
@@ -160,10 +175,24 @@ final class CallCenter: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
   }
 
   func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
+    activeAudioSession = nil
     let rtcSession = RTCAudioSession.sharedInstance()
     rtcSession.audioSessionDidDeactivate(audioSession)
     rtcSession.isAudioEnabled = false
     emit("onAudioDeactivated", [:])
+  }
+
+  // The WebRTC audio unit was created AFTER CallKit activated the session (a lock screen
+  // answer: the sealed offer decrypts only post unlock, minutes after didActivate). The
+  // unit never saw the activation, so re-hand the session over and cycle the enable flag
+  // to start it. Called by JS when the call reaches active; harmless when the unit was
+  // already live (an inaudible re-attach at connect time).
+  func refreshAudio() {
+    guard let session = activeAudioSession else { return }
+    let rtcSession = RTCAudioSession.sharedInstance()
+    rtcSession.audioSessionDidActivate(session)
+    rtcSession.isAudioEnabled = false
+    rtcSession.isAudioEnabled = true
   }
 
   // --- JS facing operations (called through the module) ---
@@ -346,6 +375,10 @@ public class NucoCallkitModule: Module {
       if let parsed = UUID(uuidString: uuid) {
         CallCenter.shared.reportEnded(uuid: parsed, reason: reason)
       }
+    }
+
+    Function("refreshAudioSession") {
+      CallCenter.shared.refreshAudio()
     }
   }
 

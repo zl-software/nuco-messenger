@@ -21,6 +21,7 @@ export interface NucoCallkitNative {
   reportOutgoingConnected(uuid: string): void;
   endCallLocal(uuid: string): Promise<void>;
   answerCallLocal(uuid: string): Promise<void>;
+  refreshAudioSession(): void;
   reportCallEnded(
     uuid: string,
     reason: 'remoteEnded' | 'unanswered' | 'failed' | 'answeredElsewhere' | 'declinedElsewhere',

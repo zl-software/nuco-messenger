@@ -133,8 +133,12 @@ async function syncCallKit(snap: CallUiSnapshot): Promise<void> {
     }
     if (snap.status !== 'active') return;
   }
-  if (snap.status === 'active' && snap.direction === 'out' && callkitUuid) {
-    callkit.reportConnected(callkitUuid);
+  if (snap.status === 'active') {
+    if (snap.direction === 'out' && callkitUuid) callkit.reportConnected(callkitUuid);
+    // The WebRTC audio unit may have been created long after CallKit activated the
+    // session (lock screen answer, offer decrypted post unlock): re-hand the session to
+    // the unit now that the media is up. Inaudible when the unit was already attached.
+    callkit.refreshAudio();
     return;
   }
   if (snap.status === 'ending' || snap.status === 'idle') {
