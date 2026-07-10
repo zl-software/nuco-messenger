@@ -27,9 +27,14 @@ camera, push, foreground service). Build with `eas build --profile development`.
 - `src/crypto/verification.ts` (card hash, initiator rule) must stay Node pure: the e2e
   harness and the crypto selftest import it (no react-native, expo, or db imports).
 - All WebRTC specific code stays behind `src/calls/engine.ts`, the audio session behind
-  `src/calls/audio.ts`. The call state machine (`src/calls/controller.ts`) is Node pure and
-  must stay importable without native modules (the e2e harness and `calls:check` depend on
-  it). Calls are relay only ICE; call signaling is sealed `call/*` message content.
+  `src/calls/audio.ts`, and all CallKit/PushKit code behind `src/calls/callkit.ts` (the
+  only importer of `modules/nuco-callkit`; no-op fallback off iOS). The call state
+  machine (`src/calls/controller.ts`) is Node pure and must stay importable without
+  native modules (the e2e harness and `calls:check` depend on it); the CallKit glue
+  lives in `services/calls.ts` as snapshot watching, never inside the controller. Calls
+  are relay only ICE; call signaling is sealed `call/*` message content, sent with wake
+  hint `voip` for offers and `none` for the rest (see `wakeHintFor` in
+  `services/messaging.ts`).
 - The lock gates DECRYPTION, not just the UI. The SQLCipher key lives only in memory.
 - Contact deletion goes through `services/contacts.removeContact` ONLY (never bare
   `deleteContact`): it also wipes the peer's Signal session and the per run confirm
