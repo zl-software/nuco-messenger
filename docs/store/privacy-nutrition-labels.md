@@ -39,7 +39,8 @@ The app config declares `usesNonExemptEncryption: false`. Rationale, learned the
 (and the `ITSEncryptionExportComplianceCode` that goes with it) exists only for two cases,
 proprietary or non standard cryptography, or standard cryptography distributed in France.
 The App Store Connect API literally refuses to create a declaration otherwise. Nuco
-implements only standard algorithms (Signal Protocol: AES, Curve25519, HMAC) and v1
+implements only standard algorithms (Signal Protocol via libsignal: AES, Curve25519,
+HMAC, and since protocol 3.0 ML-KEM-1024, the NIST FIPS 203 standard, for PQXDH) and v1
 excludes France from availability, so no documentation requirement applies, which is
 exactly Apple's definition of the `false` value ("only uses forms of encryption that are
 exempt from export compliance documentation requirements"). A build declaring `true`
