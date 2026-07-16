@@ -15,6 +15,7 @@ const CLIENT_MESSAGE_TYPE_MAP = {
     ping: true,
     deregister: true,
     turnCredentials: true,
+    report: true,
 };
 const SERVER_MESSAGE_TYPE_MAP = {
     connected: true,

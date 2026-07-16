@@ -11,6 +11,8 @@ export declare enum ErrorCode {
     QueueFull = "QUEUE_FULL",
     MessageTooLarge = "MESSAGE_TOO_LARGE",
     CallsUnavailable = "CALLS_UNAVAILABLE",
+    Banned = "BANNED",
+    ReportRejected = "REPORT_REJECTED",
     Internal = "INTERNAL"
 }
 export type ErrorCodeValue = `${ErrorCode}`;

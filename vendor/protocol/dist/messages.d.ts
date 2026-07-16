@@ -61,7 +61,17 @@ export interface TurnCredentialsMsg {
     readonly type: 'turnCredentials';
     readonly rid: string;
 }
-export type ClientMessage = ConnectMsg | AuthenticateMsg | RegisterMsg | SendMsg | AckMsg | PingMsg | DeregisterMsg | TurnCredentialsMsg;
+export type ReportCategory = 'spam' | 'harassment' | 'illegal' | 'other';
+export type ReportContext = 'contact' | 'message';
+export interface ReportMsg {
+    readonly type: 'report';
+    readonly rid: string;
+    readonly handle: string;
+    readonly category: ReportCategory;
+    readonly comment?: string;
+    readonly context?: ReportContext;
+}
+export type ClientMessage = ConnectMsg | AuthenticateMsg | RegisterMsg | SendMsg | AckMsg | PingMsg | DeregisterMsg | TurnCredentialsMsg | ReportMsg;
 export type ClientMessageType = ClientMessage['type'];
 export interface ConnectedMsg {
     readonly type: 'connected';

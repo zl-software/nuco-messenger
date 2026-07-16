@@ -1,4 +1,4 @@
-import type { ClientMessage } from './messages.js';
+import type { ClientMessage, ReportCategory, ReportContext } from './messages.js';
 import { ErrorCode } from './errors.js';
 export declare function isRecord(v: unknown): v is Record<string, unknown>;
 export declare const LIMITS: {
@@ -13,7 +13,10 @@ export declare const LIMITS: {
     readonly attestKindMaxLen: 32;
     readonly attestKeyIdB64MaxLen: 64;
     readonly attestationB64MaxLen: 24576;
+    readonly reportCommentMaxLen: 500;
 };
+export declare const REPORT_CATEGORIES: readonly ReportCategory[];
+export declare const REPORT_CONTEXTS: readonly ReportContext[];
 export type ParseResult = {
     ok: true;
     message: ClientMessage;

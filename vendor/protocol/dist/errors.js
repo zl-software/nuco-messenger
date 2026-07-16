@@ -14,6 +14,8 @@ export var ErrorCode;
     ErrorCode["QueueFull"] = "QUEUE_FULL";
     ErrorCode["MessageTooLarge"] = "MESSAGE_TOO_LARGE";
     ErrorCode["CallsUnavailable"] = "CALLS_UNAVAILABLE";
+    ErrorCode["Banned"] = "BANNED";
+    ErrorCode["ReportRejected"] = "REPORT_REJECTED";
     ErrorCode["Internal"] = "INTERNAL";
 })(ErrorCode || (ErrorCode = {}));
 export const ALL_ERROR_CODES = Object.values(ErrorCode);

@@ -30,6 +30,7 @@ export const LIMITS = {
     attestKindMaxLen: 32,
     attestKeyIdB64MaxLen: 64, // App Attest key ids are 44 chars of base64
     attestationB64MaxLen: 24576, // real attestation objects are ~7.5 KB of base64
+    reportCommentMaxLen: 500,
 };
 function isHandle(v) {
     return isNonEmptyStr(v) && v.length <= LIMITS.handleMaxLen;
@@ -63,6 +64,14 @@ function isPushRegistration(v) {
 const WAKE_HINTS = ['alert', 'voip', 'none'];
 function isWakeHint(v) {
     return isStr(v) && WAKE_HINTS.includes(v);
+}
+export const REPORT_CATEGORIES = ['spam', 'harassment', 'illegal', 'other'];
+export const REPORT_CONTEXTS = ['contact', 'message'];
+function isReportCategory(v) {
+    return isStr(v) && REPORT_CATEGORIES.includes(v);
+}
+function isReportContext(v) {
+    return isStr(v) && REPORT_CONTEXTS.includes(v);
 }
 // Shape check only. The kind is not restricted to known values here so a future
 // attestation scheme stays a minor version; the relay decides which kinds it accepts.
@@ -180,6 +189,29 @@ export function parseClientMessage(raw) {
             if (!isRid(v.rid))
                 return MALFORMED;
             return { ok: true, message: { type: 'turnCredentials', rid: v.rid } };
+        }
+        case 'report': {
+            if (!isRid(v.rid))
+                return MALFORMED;
+            if (!isHandle(v.handle))
+                return MALFORMED;
+            if (!isReportCategory(v.category))
+                return MALFORMED;
+            if (v.comment !== undefined && !(isNonEmptyStr(v.comment) && v.comment.length <= LIMITS.reportCommentMaxLen))
+                return MALFORMED;
+            if (v.context !== undefined && !isReportContext(v.context))
+                return MALFORMED;
+            return {
+                ok: true,
+                message: {
+                    type: 'report',
+                    rid: v.rid,
+                    handle: v.handle,
+                    category: v.category,
+                    ...(v.comment !== undefined ? { comment: v.comment } : {}),
+                    ...(v.context !== undefined ? { context: v.context } : {}),
+                },
+            };
         }
         default:
             return MALFORMED;
