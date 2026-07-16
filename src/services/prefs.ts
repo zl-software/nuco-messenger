@@ -22,6 +22,9 @@ export interface Prefs {
   // the text). Notifications are always content free, so this is an in app setting only.
   maskChatPreviews: boolean;
   distributor: string;
+  // When the user agreed to the terms of use on the onboarding welcome screen (unix ms),
+  // null before agreement. Onboarding cannot proceed without it.
+  termsAcceptedAt: number | null;
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -38,6 +41,7 @@ export const DEFAULT_PREFS: Prefs = {
   notificationsEnabled: true,
   maskChatPreviews: true,
   distributor: 'https://ntfy.sh',
+  termsAcceptedAt: null,
 };
 
 export async function loadPrefs(): Promise<Prefs> {

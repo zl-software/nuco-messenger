@@ -55,10 +55,11 @@ export function startRelay(url: string, account: Account, registerOnConnect?: Re
     onDeliver: (from, envelope) => deliverHandler(from, envelope),
     onStatus: (status) => statusHandler(status),
     onError: (code) => {
-      // Registration gating verdicts are terminal for this connection attempt: stop the
-      // reconnect loop (no point re-attesting on a timer) and surface a banner whose
-      // retry calls reconnectRelay for a fresh socket, challenge, and attestation.
-      if (code === ErrorCode.AttestationRequired || code === ErrorCode.AttestationFailed) {
+      // Registration gating verdicts and operator bans are terminal for this connection
+      // attempt: stop the reconnect loop (no point re-attesting or re-authing on a timer)
+      // and surface a banner whose retry calls reconnectRelay for a fresh socket,
+      // challenge, and attestation.
+      if (code === ErrorCode.AttestationRequired || code === ErrorCode.AttestationFailed || code === ErrorCode.Banned) {
         useSession.getState().setRegistrationError(code);
         stopRelay();
       }

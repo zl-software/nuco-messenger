@@ -15,6 +15,8 @@ import {
   type RegisterAttestation,
   type WakeHint,
   type ErrorCodeValue,
+  type ReportCategory,
+  type ReportContext,
 } from '@nuco/protocol';
 
 import { signChallenge, type AuthKeyPair } from '../crypto/identity';
@@ -187,6 +189,22 @@ export class RelayClient {
     const reply = await this.request((rid) => ({ type: 'turnCredentials', rid }));
     if (reply.type !== 'turnCredentialsResult') throw new Error('unexpected reply to turnCredentials');
     return { urls: reply.urls, username: reply.username, credential: reply.credential, expiresAt: reply.expiresAt };
+  }
+
+  // Flag a handle to the relay operator (protocol 3.2, see PROTOCOL.md "Reports and
+  // bans"). Metadata only, never message content. Bounded wait, and gated on the
+  // advertised version pair like turnCredentials (an older relay would answer the unknown
+  // frame with a rid-less MALFORMED_MESSAGE and the request would only die by timeout):
+  // a relay below 3.2 rejects with REPORT_UNSUPPORTED, a client local sentinel.
+  async report(
+    params: { handle: string; category: ReportCategory; comment?: string; context?: ReportContext },
+    timeoutMs = 8000,
+  ): Promise<void> {
+    await this.ensureReady(timeoutMs);
+    if (this.serverVersion && this.serverVersion.major === 3 && this.serverVersion.minor < 2) {
+      throw new Error('REPORT_UNSUPPORTED');
+    }
+    await this.request((rid) => ({ type: 'report', rid, ...params }));
   }
 
   // Hand a sealed envelope to the relay. Resolves when the relay accepts it; queued while

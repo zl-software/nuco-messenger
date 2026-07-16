@@ -11,9 +11,9 @@ interface SessionState {
   account: Account | null;
   lockStatus: LockStatus;
   relayStatus: RelayStatus;
-  // Set when the relay refused to create our handle (attestation gating); cleared on the
-  // next connection attempt. Drives the registration blocked banner on the chats screen.
-  registrationError: 'ATTESTATION_REQUIRED' | 'ATTESTATION_FAILED' | null;
+  // Set when the relay refused this handle (attestation gating, or an operator ban);
+  // cleared on the next connection attempt. Drives the blocked banner on the chats screen.
+  registrationError: 'ATTESTATION_REQUIRED' | 'ATTESTATION_FAILED' | 'BANNED' | null;
   setAccount: (account: Account | null) => void;
   setLockStatus: (status: LockStatus) => void;
   setRelayStatus: (status: RelayStatus) => void;

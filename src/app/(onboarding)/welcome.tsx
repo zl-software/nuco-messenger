@@ -1,13 +1,24 @@
-import { StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import * as WebBrowser from 'expo-web-browser';
 
-import { Button, NucoLockup, Screen, Text } from '@/ui';
-import { Spacing } from '@/constants/theme';
+import { Button, Check, NucoLockup, Screen, Text } from '@/ui';
+import { useSettings } from '@/state/settings';
+import { Colors, Overlay, Spacing } from '@/constants/theme';
 
 export default function WelcomeScreen() {
   const { t } = useTranslation();
   const router = useRouter();
+  // The terms gate: creating an account (later, on the keygen screen) is only reachable
+  // after an explicit agreement here. The link opens the hosted terms in the browser.
+  const [agreed, setAgreed] = useState(false);
+
+  function onContinue() {
+    void useSettings.getState().update({ termsAcceptedAt: Date.now() });
+    router.push('/(onboarding)/name');
+  }
 
   return (
     <Screen glow contentStyle={styles.content}>
@@ -22,7 +33,22 @@ export default function WelcomeScreen() {
       </View>
 
       <View style={styles.footer}>
-        <Button label={t('onboarding.welcomeCta')} onPress={() => router.push('/(onboarding)/name')} />
+        <Pressable style={styles.termsRow} onPress={() => setAgreed((v) => !v)} hitSlop={8}>
+          <View style={[styles.checkbox, agreed ? styles.checkboxOn : null]}>
+            {agreed ? <Check size={14} color={Colors.accentInk} /> : null}
+          </View>
+          <Text variant="bodySecondary" color="textSecondary" style={styles.termsText}>
+            {t('onboarding.termsAgree')}{' '}
+            <Text
+              variant="bodySecondary"
+              color="accent"
+              onPress={() => void WebBrowser.openBrowserAsync(t('onboarding.termsUrl'))}
+            >
+              {t('onboarding.termsLink')}
+            </Text>
+          </Text>
+        </Pressable>
+        <Button label={t('onboarding.welcomeCta')} disabled={!agreed} onPress={onContinue} />
       </View>
     </Screen>
   );
@@ -34,4 +60,16 @@ const styles = StyleSheet.create({
   title: { marginTop: Spacing.xxl },
   body: { maxWidth: 320 },
   footer: { gap: Spacing.lg, paddingBottom: Spacing.lg },
+  termsRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: Overlay.hairline,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxOn: { backgroundColor: Colors.accent, borderColor: Colors.accent },
+  termsText: { flex: 1 },
 });

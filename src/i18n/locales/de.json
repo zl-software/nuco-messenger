@@ -20,6 +20,9 @@
     "welcomeBody": "Ende-zu-Ende-verschlüsselte Nachrichten, die nach einem Timer verschwinden und nur auf deinen Geräten gespeichert sind.",
     "welcomeCta": "Loslegen",
     "welcomeFootnote": "Dein Konto bleibt auf diesem Gerät. Keine Cloud, keine Nummer.",
+    "termsAgree": "Ich akzeptiere die",
+    "termsLink": "Nutzungsbedingungen",
+    "termsUrl": "https://nuco-messenger.com/de/nutzungsbedingungen",
     "nameTitle": "Wähle einen Anzeigenamen",
     "nameHelper": "Das ist teilbar, nicht privat. Nimm, was du möchtest.",
     "nameSection": "So wirst du angezeigt",
@@ -93,6 +96,7 @@
     "you": "Du: {{text}}",
     "hiddenPreview": "Nachricht",
     "registrationBlocked": "Registrierung blockiert",
+    "accountSuspended": "Konto gesperrt",
     "clearAction": "Leeren",
     "clearChat": "Chat leeren",
     "deleteChat": "Chat löschen",
@@ -462,6 +466,22 @@
     "retryConnection": "Verbindung erneut versuchen",
     "switchToDefault": "Zum Nuco-Standard wechseln"
   },
+  "report": {
+    "title": "Melden",
+    "reportContact": "Kontakt melden",
+    "reportMessage": "Melden",
+    "body": "Eine Meldung schickt {{name}}s Kennung und deine an den Serverbetreiber, damit er gegen Missbrauch vorgehen kann. Deine Nachrichten bleiben Ende zu Ende verschlüsselt und werden nie mitgeschickt.",
+    "categorySpam": "Spam",
+    "categoryHarassment": "Belästigung",
+    "categoryIllegal": "Illegale Inhalte",
+    "categoryOther": "Etwas anderes",
+    "commentPlaceholder": "Notiz für den Betreiber (optional)",
+    "alsoBlock": "{{name}} auch blockieren",
+    "submit": "Meldung senden",
+    "sentTitle": "Meldung gesendet",
+    "sentBody": "Danke. Der Betreiber prüft Meldungen innerhalb von 24 Stunden und kann das gemeldete Konto sperren.",
+    "sendFailed": "Die Meldung konnte nicht gesendet werden. Prüfe deine Verbindung und versuche es erneut."
+  },
   "errors": {
     "PROTOCOL_VERSION_MISMATCH": "Diese App-Version ist nicht mit dem Server kompatibel. Bitte aktualisiere die App.",
     "MALFORMED_MESSAGE": "Beim Kommunizieren mit dem Server ist etwas schiefgelaufen.",
@@ -475,6 +495,9 @@
     "ATTESTATION_FAILED": "Deine Installation konnte nicht mit Apple verifiziert werden. Prüfe deine Verbindung und versuche es erneut.",
     "QUEUE_FULL": "Der Posteingang dieses Kontakts ist voll. Versuche es später erneut.",
     "MESSAGE_TOO_LARGE": "Diese Nachricht ist zu groß zum Senden.",
+    "BANNED": "Dieses Konto wurde vom Serverbetreiber wegen eines Verstoßes gegen die Nutzungsbedingungen gesperrt.",
+    "REPORT_REJECTED": "Der Server hat diese Meldung nicht angenommen.",
+    "REPORT_UNSUPPORTED": "Dieser Server unterstützt Meldungen noch nicht.",
     "INTERNAL": "Der Server hatte ein Problem. Bitte versuche es erneut.",
     "generic": "Etwas ist schiefgelaufen. Bitte versuche es erneut."
   }

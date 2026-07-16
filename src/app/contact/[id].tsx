@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 
 import { RETENTION_MAX_SECONDS } from '@nuco/protocol';
 
-import { Avatar, BottomSheet, Button, Card, ChevronLeft, ChevronRight, Phone, Screen, SegmentedControl, Text, TextField, Toggle, VerifiedShield } from '@/ui';
+import { Avatar, BottomSheet, Button, Card, ChevronLeft, ChevronRight, Phone, ReportSheet, Screen, SegmentedControl, Text, TextField, Toggle, VerifiedShield } from '@/ui';
 import { useStartCall } from '@/calls/use-start-call';
 import { useCall } from '@/state/call';
 import {
@@ -70,6 +70,7 @@ export default function ContactDetailScreen() {
   const [customMode, setCustomMode] = useState(false);
   const [customValue, setCustomValue] = useState('');
   const [customUnit, setCustomUnit] = useState<CustomUnit>('hours');
+  const [reportSheetOpen, setReportSheetOpen] = useState(false);
   const [lockSheetOpen, setLockSheetOpen] = useState(false);
   const [lockCode, setLockCode] = useState('');
   const [lockCode2, setLockCode2] = useState('');
@@ -549,6 +550,12 @@ export default function ContactDetailScreen() {
               <Toggle value={contact.blocked} onChange={onToggleBlock} />
             </View>
             <View style={styles.dangerDivider} />
+            <Pressable onPress={() => setReportSheetOpen(true)} style={styles.deleteRow}>
+              <Text variant="label" color="dangerSoft">
+                {t('report.reportContact')}
+              </Text>
+            </Pressable>
+            <View style={styles.dangerDivider} />
             <Pressable onPress={onDelete} style={styles.deleteRow}>
               <Text variant="label" color="danger">
                 {t('contactDetail.deleteContact')}
@@ -655,6 +662,16 @@ export default function ContactDetailScreen() {
           </View>
         )}
       </BottomSheet>
+
+      <ReportSheet
+        visible={reportSheetOpen}
+        onClose={() => setReportSheetOpen(false)}
+        contact={contact}
+        context="contact"
+        onBlocked={() => {
+          if (contact) setContact({ ...contact, blocked: true });
+        }}
+      />
 
       <BottomSheet visible={lockSheetOpen} title={t('chatLock.title')} onClose={() => setLockSheetOpen(false)}>
         {!lockOn ? (

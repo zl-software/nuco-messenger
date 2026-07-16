@@ -20,6 +20,9 @@
     "welcomeBody": "End to end encrypted messages that disappear on a timer and live only on your devices.",
     "welcomeCta": "Get started",
     "welcomeFootnote": "Your account stays on this device. No cloud, no number.",
+    "termsAgree": "I have read and agree to the",
+    "termsLink": "Terms of Use",
+    "termsUrl": "https://nuco-messenger.com/terms",
     "nameTitle": "Choose a display name",
     "nameHelper": "This is shareable, not private. Use anything you like.",
     "nameSection": "How you will appear",
@@ -93,6 +96,7 @@
     "you": "You: {{text}}",
     "hiddenPreview": "Message",
     "registrationBlocked": "Registration blocked",
+    "accountSuspended": "Account suspended",
     "clearAction": "Clear",
     "clearChat": "Clear chat",
     "deleteChat": "Delete chat",
@@ -462,6 +466,22 @@
     "retryConnection": "Retry connection",
     "switchToDefault": "Switch to Nuco default"
   },
+  "report": {
+    "title": "Report",
+    "reportContact": "Report contact",
+    "reportMessage": "Report",
+    "body": "A report sends {{name}}'s handle and yours to the server operator so they can act on abuse. Your messages stay end to end encrypted and are never included.",
+    "categorySpam": "Spam",
+    "categoryHarassment": "Harassment",
+    "categoryIllegal": "Illegal content",
+    "categoryOther": "Something else",
+    "commentPlaceholder": "Add a note for the operator (optional)",
+    "alsoBlock": "Also block {{name}}",
+    "submit": "Send report",
+    "sentTitle": "Report sent",
+    "sentBody": "Thank you. The operator reviews reports within 24 hours and can suspend the reported account.",
+    "sendFailed": "The report could not be sent. Check your connection and try again."
+  },
   "errors": {
     "PROTOCOL_VERSION_MISMATCH": "This app version is not compatible with the server. Please update.",
     "MALFORMED_MESSAGE": "Something went wrong talking to the server.",
@@ -475,6 +495,9 @@
     "ATTESTATION_FAILED": "Your install could not be verified with Apple. Check your connection and try again.",
     "QUEUE_FULL": "That contact's inbox is full. Try again later.",
     "MESSAGE_TOO_LARGE": "That message is too large to send.",
+    "BANNED": "This account was suspended by the server operator for violating the terms of use.",
+    "REPORT_REJECTED": "The server did not accept this report.",
+    "REPORT_UNSUPPORTED": "This server does not support reports yet.",
     "INTERNAL": "The server had a problem. Please try again.",
     "generic": "Something went wrong. Please try again."
   }

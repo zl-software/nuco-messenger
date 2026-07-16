@@ -25,6 +25,7 @@ function extractPrefs(state: SettingsState): Prefs {
     notificationsEnabled: state.notificationsEnabled,
     maskChatPreviews: state.maskChatPreviews,
     distributor: state.distributor,
+    termsAcceptedAt: state.termsAcceptedAt,
   };
 }
 

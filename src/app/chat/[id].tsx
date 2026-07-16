@@ -33,6 +33,7 @@ import {
   ChevronLeft,
   Close,
   Phone,
+  ReportSheet,
   Screen,
   SendArrow,
   Text,
@@ -94,6 +95,7 @@ export default function ConversationScreen() {
   // The long pressed message (drives the action sheet) and the message being replied to
   // (drives the composer reply bar and the outgoing replyTo reference).
   const [menuTarget, setMenuTarget] = useState<Message | null>(null);
+  const [reportSheetOpen, setReportSheetOpen] = useState(false);
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
   const inputRef = useRef<TextInput>(null);
   const scrollRef = useRef<ScrollView>(null);
@@ -254,6 +256,14 @@ export default function ConversationScreen() {
     // Focus only once the sheet Modal is fully dismissed; focusing under a dismissing
     // Modal loses the keyboard on iOS (the sheet close animation runs 200ms).
     setTimeout(() => inputRef.current?.focus(), 300);
+  }, [menuTarget]);
+
+  const onMenuReport = useCallback(() => {
+    if (!menuTarget) return;
+    setMenuTarget(null);
+    // Same Modal stacking rule as the delete confirms: the menu sheet must fully dismiss
+    // before the report sheet presents.
+    setTimeout(() => setReportSheetOpen(true), 300);
   }, [menuTarget]);
 
   // Both delete confirms close the sheet first and delay the alert past the sheet's close
@@ -738,9 +748,24 @@ export default function ConversationScreen() {
                 {t('conversation.menuDeleteForEveryone')}
               </Text>
             </Pressable>
-          ) : null}
+          ) : (
+            // Incoming messages can be flagged to the relay operator instead.
+            <Pressable style={styles.optionRow} onPress={onMenuReport}>
+              <Text variant="label" color="danger">
+                {t('report.reportMessage')}
+              </Text>
+            </Pressable>
+          )}
         </View>
       </BottomSheet>
+
+      <ReportSheet
+        visible={reportSheetOpen}
+        onClose={() => setReportSheetOpen(false)}
+        contact={contact}
+        context="message"
+        onBlocked={() => void loadAll()}
+      />
     </Screen>
   );
 }

@@ -289,7 +289,7 @@ export default function ChatsScreen() {
   const registrationBanner = registrationError ? (
     <View style={styles.regBanner}>
       <Text variant="rowTitle" color="text">
-        {t('chats.registrationBlocked')}
+        {t(registrationError === 'BANNED' ? 'chats.accountSuspended' : 'chats.registrationBlocked')}
       </Text>
       <Text variant="bodySecondary" color="textSecondary">
         {t(`errors.${registrationError}`)}
