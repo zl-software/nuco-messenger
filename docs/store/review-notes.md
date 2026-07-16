@@ -46,6 +46,33 @@ Technical notes for the reviewer:
 - A user can point the app at a self hosted relay in Settings (the relay is open source);
   the default server requires no configuration.
 
+User generated content precautions (Guideline 1.2), added in build 11 after the July 15,
+2026 rejection:
+
+- Terms of use: onboarding requires an explicit agreement (checkbox plus link) to the
+  hosted terms at https://nuco-messenger.com/terms BEFORE an account can be created. The
+  terms state zero tolerance for objectionable content and abusive users.
+- Filtering: unsolicited content is structurally impossible in Nuco. A conversation only
+  exists after two people scanned each other's QR code IN PERSON and both confirmed the
+  matching emoji code; messages from anyone else are dropped before display. There are no
+  public feeds, no discovery, no group content, and strangers cannot contact a user.
+- Flagging: every contact can be reported from the contact screen ("Report contact"), and
+  every received message via long press ("Report"). The report reaches our server
+  operator with a category and optional note. Because all messages are end to end
+  encrypted (Signal Protocol), a report contains no message content; it identifies the
+  abusive account.
+- Blocking: every contact can be blocked instantly from the contact screen (and directly
+  from the report sheet via "Also block"); blocking stops all delivery from that account
+  immediately on the device. The developer is notified through the same report mechanism.
+- 24 hour action: we review reports within 24 hours and eject offenders by suspending
+  their account on the relay (a suspended account cannot connect, send, or re-register).
+  Since content is end to end encrypted and stored only on user devices, "removing the
+  content" takes the form of removing the offender's access; the reporting user deletes
+  the conversation locally (delete chat and delete for me exist in the app).
+
+The demo recording covering the terms agreement in onboarding, the report flow, and the
+block flow (captured on a physical iPhone) is linked in this submission's review notes.
+
 ## Assets to prepare before submission
 
 - The two device demo video (record during the TestFlight device pass, English UI,
@@ -55,3 +82,9 @@ Technical notes for the reviewer:
   https://www.youtube.com/watch?v=lRs9VdbApJU above.
 - Contact fields in App Review Information: a reachable phone number and
   support@zlsoftware.at.
+- A physical device screen recording for Guideline 1.2 (single iPhone is enough) showing:
+  the terms checkbox and link on the onboarding welcome screen (tap the link so the terms
+  page opens, then agree and continue), the report sheet from a contact's detail page and
+  from a message long press (send one report), and the block toggle plus the "Also block"
+  toggle inside the report sheet. Host it like the demo video and link it in the review
+  notes; Apple asked for exactly these three flows in the rejection of build 10.
