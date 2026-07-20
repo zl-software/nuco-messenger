@@ -1,8 +1,12 @@
 # nuco-messenger
 
-The Nuco app: a secure, end to end encrypted 1:1 messenger for iOS and Android (GrapheneOS
-is covered by the Android build). Messages are sealed on the device with the Signal Protocol
-(X3DH plus Double Ratchet), disappear on a timer, and live only on this device.
+The Nuco app: a secure, end to end encrypted 1:1 messenger. Messages are sealed on the
+device with the Signal Protocol via official native libsignal (PQXDH plus Double Ratchet,
+post quantum), disappear on a timer, and live only on this device.
+
+Nuco is on the [App Store](https://apps.apple.com/app/nuco-messenger/id6788573353). iOS
+ships first; the Android build is part of the codebase (GrapheneOS included) but has not
+shipped yet.
 
 This app runs as an Expo dev build. It cannot run in Expo Go, because it bundles custom
 native modules (encrypted SQLite via op-sqlite and SQLCipher, the camera, push, and a
@@ -10,9 +14,13 @@ foreground service).
 
 ## Architecture
 
-- `src/crypto/` : all Signal specific code behind `signal.ts`, with an auditable pure
-  JavaScript WebCrypto provider, the 60 digit safety number, and the emoji SAS. The
-  underlying library is unaudited and isolated here for a later swap to native libsignal.
+- `src/crypto/` : all Signal specific code behind `signal.ts`, which runs OFFICIAL
+  libsignal (the same Rust core Signal itself ships) through a record passing backend
+  seam: the local native module on device, `@signalapp/libsignal-client` on Node for the
+  test harnesses. The 60 digit safety number and the emoji SAS live here too.
+- `modules/` : local Expo native modules: `nuco-libsignal` (prebuilt official libsignal,
+  version pinned in its `libsignal.json`), `nuco-pinned-ws` (the certificate pinned relay
+  socket on iOS), `nuco-callkit` (CallKit plus PushKit, so calls ring on the lock screen).
 - `src/db/` : the encrypted SQLCipher database (messages, contacts, conversations, and the
   Signal store).
 - `src/transport/` : the resilient relay WebSocket client and push.
@@ -34,7 +42,7 @@ npm --prefix ../protocol install && npm --prefix ../protocol run build
 
 npm install
 npm run typecheck
-npm run crypto:selftest   # validates the crypto core on Node, both providers
+npm run crypto:selftest   # validates the crypto core on Node via official libsignal
 ```
 
 ## Build and run
@@ -63,24 +71,22 @@ and set it in Settings.
 - The relay sees only padded ciphertext plus routing metadata. Pushes are content free: a
   generic banner, never the text or the sender.
 - Verification is strictly in person and mutual: both people scan each other's QR card
-  (the card carries the whole X3DH bundle, so sessions establish offline at the scan) and
-  both confirm the matching emoji code. A conversation only unlocks after that.
+  (the card carries the whole PQXDH bundle, identity key plus signed prekey plus signed
+  Kyber prekey, so sessions establish fully offline at the scan) and both confirm the
+  matching emoji code. A conversation only unlocks after that.
+- On iOS the connection to the reference relay is certificate pinned (pins and runbook in
+  `docs/relay-pinning.md`); custom and self hosted relays use the system trust store.
 
-## Pre production security checklist
+## Security status, honestly
 
-This is a v1 with an UNAUDITED crypto library. Before any production use:
-
-- Replace `@privacyresearch/libsignal-protocol-typescript` with audited native libsignal
-  (`@signalapp/libsignal-client`) behind the same `src/crypto/signal.ts` boundary.
-- Commission an independent security review of the crypto path, the safety number, and the
-  SAS against known Signal test vectors.
-- Add certificate pinning to the relay connection.
-- Decide the key loss and backup posture (device only by default, no cloud restore: losing
-  the device loses the account and history).
-- Restate the metadata caveat: the relay can see who is in contact, when, and a padded size
-  bucket, even though it cannot read messages.
-- Verify on real devices for iOS, stock Android, and GrapheneOS, including the lock and
-  biometric flow, encrypted database open, camera scan, and the push wake paths.
+- The cipher is official libsignal, the audited engine Signal runs on, as a prebuilt
+  native library on device. Nothing cryptographic is hand rolled.
+- Nuco itself (the app around libsignal) has not yet had an independent security audit.
+  If an audit is non negotiable for you right now, use Signal, and we mean that.
+- Metadata caveat: the relay can never read messages, but like any server it sees which
+  handles are in contact, when, and padded size buckets.
+- Key loss is final by design: there is no cloud backup and no recovery. Losing the
+  device loses the account and the history.
 
 ## No telemetry
 
