@@ -48,7 +48,8 @@ private,encrypted,messenger,secure,e2ee,signal,disappearing,messages,chat,calls,
 
 **Privacy Policy URL:** https://nuco-messenger.com/privacy
 
-**Price:** 0.99 EUR tier (paid up front, no in app purchases, no subscriptions)
+**Price:** Free since July 23, 2026 (launched at the 0.99 EUR tier; no in app purchases,
+no subscriptions)
 
 **Primary category:** Social Networking
 

@@ -49,7 +49,8 @@ privat,verschlüsselt,messenger,sicher,e2ee,signal,nachrichten,chat,anrufe,ohne 
 
 **Datenschutz-URL:** https://nuco-messenger.com/de/datenschutz
 
-**Preis:** 0,99 EUR Stufe (einmaliger Kauf, keine In-App-Käufe, keine Abos)
+**Preis:** Kostenlos seit 23. Juli 2026 (gestartet in der 0,99 EUR Stufe; keine
+In-App-Käufe, keine Abos)
 
 **Primäre Kategorie:** Soziale Netzwerke
 
