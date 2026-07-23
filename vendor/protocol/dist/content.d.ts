@@ -42,11 +42,31 @@ export type MessageContent = {
 } | {
     readonly t: 'profile/name';
     readonly name: string;
+} | {
+    readonly t: 'image';
+    readonly mime: string;
+    readonly width: number;
+    readonly height: number;
+    readonly bytes: number;
+    readonly sha256: string;
+    readonly chunks: number;
+} | {
+    readonly t: 'image/chunk';
+    readonly ref: string;
+    readonly seq: number;
+    readonly data: string;
 };
 export type MessageContentType = MessageContent['t'];
 export declare const MESSAGE_BODY_MAX_LEN = 16384;
 export declare const RETENTION_MAX_SECONDS: number;
 export declare const MESSAGE_ID_MAX_LEN = 64;
+export declare const IMAGE_CHUNK_RAW_BYTES = 48000;
+export declare const IMAGE_CHUNK_DATA_B64_MAX = 64000;
+export declare const IMAGE_MAX_CHUNKS = 64;
+export declare const IMAGE_MAX_BYTES: number;
+export declare const IMAGE_SHA256_B64_LEN = 44;
+export declare const IMAGE_MAX_DIM = 8192;
+export declare const IMAGE_MIME_JPEG = "image/jpeg";
 export declare const CALL_ID_MAX_LEN = 64;
 export declare const CALL_SDP_MAX_LEN = 8192;
 export declare const CALL_END_REASON_MAX_LEN = 32;
