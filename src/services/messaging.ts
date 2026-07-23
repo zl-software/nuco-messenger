@@ -6,7 +6,7 @@
 import * as Crypto from 'expo-crypto';
 
 import { encodeContent, decodeContent, type MessageContent, type MessageEnvelope, type WakeHint } from '@nuco/protocol';
-import { IdentityChangedError } from '@/crypto';
+import { DuplicateMessageError, IdentityChangedError } from '@/crypto';
 import {
   getContactByHandle,
   isMutuallyVerified,
@@ -619,6 +619,13 @@ async function doReceiveEnvelope(from: string, envelope: MessageEnvelope): Promi
         // reset the pin is gone, so the peer's NEXT prekey message establishes a fresh
         // session on trust of first use; messaging stays locked until both re-verify.
         await handleIdentityChange(contact, envelope);
+        relay?.ack(envelope.id);
+        return contact.id;
+      }
+      if (err instanceof DuplicateMessageError) {
+        // The relay redelivered an envelope whose ack was lost with a dying socket. The
+        // first delivery already stored whatever it carried, and the consumed message key
+        // means this copy can never decrypt; ack so it stops redelivering.
         relay?.ack(envelope.id);
         return contact.id;
       }

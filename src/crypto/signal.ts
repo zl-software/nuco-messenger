@@ -51,6 +51,27 @@ export class IdentityChangedError extends Error {
   }
 }
 
+// The ratchet already consumed this exact message: the relay redelivered an envelope
+// whose ack was lost with a dying socket (delivery is at least once). The message key is
+// gone, so decrypting can never succeed again; the caller must ack and drop instead of
+// leaving the envelope queued forever. Multi envelope image transfers widen the ack loss
+// window enough that this stopped being theoretical.
+export class DuplicateMessageError extends Error {
+  constructor(readonly handle: string) {
+    super('message already decrypted');
+    this.name = 'DuplicateMessageError';
+  }
+}
+
+// Each backend wraps the same Rust core error differently (the Node binding sets the
+// error name, the device modules bridge the description text), so detection matches the
+// core's stable signatures rather than one binding's class.
+function isDuplicateMessage(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const text = `${err.name} ${err.message}`;
+  return text.includes('DuplicatedMessage') || text.includes('duplicatedMessage') || text.includes('old counter');
+}
+
 export class NucoSignal {
   // Serializes all session mutating work per handle: record passing is read-modify-write
   // on the session record, so two concurrent operations on the same peer would fork the
@@ -164,15 +185,21 @@ export class NucoSignal {
         if (signedPreKeyRecord === null || kyberPreKeyRecord === null) {
           throw new Error('no local prekey records');
         }
-        const result = await this.backend.decryptPreKey(
-          local,
-          handle,
-          DEVICE_ID,
-          existing,
-          { [String(SIGNED_PREKEY_ID)]: signedPreKeyRecord },
-          { [String(KYBER_PREKEY_ID)]: kyberPreKeyRecord },
-          sealed.ciphertext,
-        );
+        let result;
+        try {
+          result = await this.backend.decryptPreKey(
+            local,
+            handle,
+            DEVICE_ID,
+            existing,
+            { [String(SIGNED_PREKEY_ID)]: signedPreKeyRecord },
+            { [String(KYBER_PREKEY_ID)]: kyberPreKeyRecord },
+            sealed.ciphertext,
+          );
+        } catch (err) {
+          if (isDuplicateMessage(err)) throw new DuplicateMessageError(handle);
+          throw err;
+        }
         if (pinned !== null && result.remoteIdentityKey !== pinned) {
           throw new IdentityChangedError(handle, result.remoteIdentityKey);
         }
@@ -184,7 +211,13 @@ export class NucoSignal {
       }
       const session = await this.store.loadSession(handle);
       if (session === null) throw new Error('no session for whisper message');
-      const result = await this.backend.decryptWhisper(local, handle, DEVICE_ID, session, sealed.ciphertext);
+      let result;
+      try {
+        result = await this.backend.decryptWhisper(local, handle, DEVICE_ID, session, sealed.ciphertext);
+      } catch (err) {
+        if (isDuplicateMessage(err)) throw new DuplicateMessageError(handle);
+        throw err;
+      }
       await this.store.storeSession(handle, result.sessionRecord);
       return unpad(base64ToBytes(result.plaintext));
     });

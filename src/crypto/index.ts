@@ -5,6 +5,7 @@
 export {
   NucoSignal,
   IdentityChangedError,
+  DuplicateMessageError,
   type SealedMessage,
   type SessionBootstrap,
   type VerificationStrings,
