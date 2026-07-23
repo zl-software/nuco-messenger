@@ -68,6 +68,12 @@ export async function migrate(db: DB): Promise<void> {
     if (current < 9 && !(await columnExists(db, 'contacts', 'card_kyber_pub'))) {
       await db.execute('ALTER TABLE contacts ADD COLUMN card_kyber_pub TEXT');
     }
+    // v9 -> v10: images (protocol 3.3). media_meta carries the unsealed layout JSON
+    // (mime, width, height, bytes) for image rows; the staging tables for in flight
+    // transfers are created by SCHEMA above on every start.
+    if (current < 10 && !(await columnExists(db, 'messages', 'media_meta'))) {
+      await db.execute('ALTER TABLE messages ADD COLUMN media_meta TEXT');
+    }
     await db.execute(
       'INSERT INTO meta(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
       ['schema_version', String(SCHEMA_VERSION)],

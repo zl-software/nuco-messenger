@@ -336,21 +336,26 @@ export default function ChatsScreen() {
           // never the raw stored value. Text previews honor the "hide previews" privacy
           // setting: when masked, the list shows a neutral placeholder instead of the body.
           // A locked chat masks EVERY kind (even "missed call"), and its text bodies are
-          // sealed in the db anyway, so the placeholder is the only honest preview.
+          // sealed in the db anyway, so the placeholder is the only honest preview. Image
+          // rows preview as a localized "Photo" label (the query never returns their body).
           const preview = item.locked
             ? t('chatLock.lockedPreview')
-            : item.kind !== 'text'
-              ? t(systemMessageKey(item.kind, item.direction, item.body), {
-                  name: item.contact.displayName,
-                  value: item.body != null ? retentionLabel(Number(item.body), t) : '',
-                  duration: callDurationParam(item.kind, item.body),
-                  ...nameChangeParams(item.kind, item.body),
-                })
-              : maskPreviews
-                ? t('chats.hiddenPreview')
-                : item.direction === 'out' && item.body
-                  ? t('chats.you', { text: item.body })
-                  : item.body ?? '';
+            : maskPreviews && (item.kind === 'text' || item.kind === 'image')
+              ? t('chats.hiddenPreview')
+              : item.kind === 'image'
+                ? item.direction === 'out'
+                  ? t('chats.you', { text: t('chats.photoPreview') })
+                  : t('chats.photoPreview')
+                : item.kind !== 'text'
+                  ? t(systemMessageKey(item.kind, item.direction, item.body), {
+                      name: item.contact.displayName,
+                      value: item.body != null ? retentionLabel(Number(item.body), t) : '',
+                      duration: callDurationParam(item.kind, item.body),
+                      ...nameChangeParams(item.kind, item.body),
+                    })
+                  : item.direction === 'out' && item.body
+                    ? t('chats.you', { text: item.body })
+                    : item.body ?? '';
           const unreadStyle = item.unread > 0;
           return (
             <SwipeableRow

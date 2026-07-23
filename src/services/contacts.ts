@@ -20,8 +20,9 @@ import { reconnectRelay } from './boot';
 import { formatFingerprint } from './onboarding';
 import { loadPrefs } from './prefs';
 import { defaultServerUrl, isSameServer, normalizeServerUrl, resolveServerUrl } from './server';
-import { upsertContact, getContactByHandle, deleteContact, type Contact } from '@/db/repos/contacts';
+import { upsertContact, getContactByHandle, deleteContact, setBlocked, type Contact } from '@/db/repos/contacts';
 import { ensureConversation } from '@/db/repos/conversations';
+import { purgeTransfersForConversation } from '@/db/repos/image-transfers';
 import { removeChatLockSecrets } from '@/lock/chat-locks';
 import { forgetConfirmState } from './verification';
 
@@ -180,4 +181,12 @@ export async function removeContact(contact: Pick<Contact, 'id' | 'handle'>): Pr
   await getSignal().deleteSession(contact.handle);
   forgetConfirmState(contact.handle);
   await deleteContact(contact.id);
+}
+
+// Blocking goes through here rather than the bare repo call: future envelopes are acked
+// and dropped before decrypt, but a half received image transfer would otherwise linger
+// in staging until the garbage collector; drop it with the block.
+export async function setContactBlocked(contactId: string, blocked: boolean): Promise<void> {
+  await setBlocked(contactId, blocked);
+  if (blocked) await purgeTransfersForConversation(contactId).catch(() => undefined);
 }

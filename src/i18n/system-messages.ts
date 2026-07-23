@@ -84,9 +84,10 @@ export type SystemMessageI18nKey =
 // The i18n key for a system message row. The caller interpolates { name, value, duration }.
 // Turning the timer off has dedicated keys so the copy never reads "disappear after Off".
 // For call rows the direction is the call direction and the body is a duration or a marker
-// token (see MessageKind in the messages repo).
+// token (see MessageKind in the messages repo). Text and image rows are bubbles, never
+// system rows, which the exclusion enforces at the call sites.
 export function systemMessageKey(
-  kind: Exclude<MessageKind, 'text'>,
+  kind: Exclude<MessageKind, 'text' | 'image'>,
   direction: MessageDirection,
   body: string | null,
 ): SystemMessageI18nKey {

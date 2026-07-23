@@ -3,6 +3,7 @@
     "NSFaceIDUsageDescription": "Unlock Nuco with Face ID.",
     "NSCameraUsageDescription": "Nuco uses the camera only to scan a contact's code.",
     "NSMicrophoneUsageDescription": "Nuco uses the microphone only during calls. Audio is end to end encrypted.",
+    "NSPhotoLibraryUsageDescription": "Nuco accesses photos only to send an image you pick. Metadata is removed on your device before sending.",
     "Localizable.strings": {
       "\"New message\"": "New message",
       "\"Unlock Nuco to connect the call\"": "Unlock Nuco to connect the call"

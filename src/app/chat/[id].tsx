@@ -8,6 +8,7 @@ import {
   AppState,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -16,6 +17,7 @@ import {
   View,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -32,7 +34,9 @@ import {
   ChatLockGate,
   ChevronLeft,
   Close,
+  ImageBubble,
   Phone,
+  Plus,
   ReportSheet,
   Screen,
   SendArrow,
@@ -42,11 +46,14 @@ import {
 import { Colors, Fonts, Overlay, Radius, Spacing } from '@/constants/theme';
 import { getContact, isMutuallyVerified, type Contact } from '@/db/repos/contacts';
 import { getConversationByContact, type Conversation } from '@/db/repos/conversations';
+import { listActiveTransfers, type ActiveTransfer } from '@/db/repos/image-transfers';
 import { listMessages, type Message } from '@/db/repos/messages';
 import { isDbOpen } from '@/db/client';
 import { decryptBodyCached, isChatUnlocked, relockChat } from '@/lock/chat-locks';
 import { subscribeConversationsChanged } from '@/services/data-events';
 import { callDurationParam, nameChangeParams, retentionLabel, systemMessageKey } from '@/i18n/system-messages';
+import { parseMediaMeta } from '@/services/image-codec';
+import { ImagePrepareError, pickAndPrepareImage, type PreparedImage } from '@/services/images';
 import {
   acceptRetention,
   acceptScreenshotProtection,
@@ -56,6 +63,7 @@ import {
   deleteMessageForMe,
   markRead,
   resendSealedPending,
+  sendImage,
   sendText,
 } from '@/services/messaging';
 import { useScreenshotGuard } from '@/ui/use-screenshot-guard';
@@ -89,8 +97,16 @@ export default function ConversationScreen() {
   const [contact, setContact] = useState<Contact | null>(null);
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  // Incoming images still assembling (chunks in the staging tables); rendered as progress
+  // placeholders in the thread until the completed row replaces them.
+  const [transfers, setTransfers] = useState<ActiveTransfer[]>([]);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  // The picked and re-encoded photo awaiting the explicit send confirmation, and the
+  // full screen viewer's data URI.
+  const [pendingImage, setPendingImage] = useState<PreparedImage | null>(null);
+  const [attachBusy, setAttachBusy] = useState(false);
+  const [viewerUri, setViewerUri] = useState<string | null>(null);
   const [chatUnlocked, setChatUnlocked] = useState(() => (id ? isChatUnlocked(id) : false));
   // The long pressed message (drives the action sheet) and the message being replied to
   // (drives the composer reply bar and the outgoing replyTo reference).
@@ -139,9 +155,14 @@ export default function ConversationScreen() {
 
   const loadAll = useCallback(async () => {
     if (!id || !isDbOpen()) return;
-    const [c, convo] = await Promise.all([getContact(id), getConversationByContact(id)]);
+    const [c, convo, active] = await Promise.all([
+      getContact(id),
+      getConversationByContact(id),
+      listActiveTransfers(id).catch(() => [] as ActiveTransfer[]),
+    ]);
     setContact(c);
     setConversation(convo);
+    setTransfers(active);
     await loadMessages();
   }, [id, loadMessages]);
 
@@ -230,6 +251,15 @@ export default function ConversationScreen() {
     return map;
   }, [messages]);
 
+  // The rendered thread: completed rows plus in flight image transfers, merged by the
+  // sender timestamp so an assembling photo holds its place in the history.
+  type ThreadItem = { key: string; at: number; m?: Message; tr?: ActiveTransfer };
+  const thread = useMemo<ThreadItem[]>(() => {
+    const items: ThreadItem[] = messages.map((m) => ({ key: m.id, at: m.sentAt, m }));
+    for (const tr of transfers) items.push({ key: `transfer:${tr.ref}`, at: tr.sentAt, tr });
+    return items.sort((a, b) => a.at - b.at);
+  }, [messages, transfers]);
+
   const onSend = useCallback(async () => {
     const text = draft.trim();
     if (!text || !contact || sending) return;
@@ -243,6 +273,37 @@ export default function ConversationScreen() {
     await loadMessages();
     setSending(false);
   }, [draft, contact, conversation, sending, replyTarget, loadMessages]);
+
+  // Open the system photo picker, re-encode (the metadata strip), and stage the result in
+  // the preview sheet. Failures surface as alerts; a cancel just returns.
+  const onAttach = useCallback(async () => {
+    if (!contact || attachBusy) return;
+    setAttachBusy(true);
+    try {
+      const prepared = await pickAndPrepareImage();
+      if (prepared) setPendingImage(prepared);
+    } catch (e) {
+      const tooLarge = e instanceof ImagePrepareError && e.reason === 'too-large';
+      Alert.alert(t(tooLarge ? 'conversation.photoTooLarge' : 'conversation.photoPrepareFailed'));
+    } finally {
+      setAttachBusy(false);
+    }
+  }, [contact, attachBusy, t]);
+
+  const onConfirmSendImage = useCallback(() => {
+    const img = pendingImage;
+    const c = contact;
+    if (!img || !c) return;
+    setPendingImage(null);
+    // Sending while scrolled up still reveals the sent photo.
+    atBottomRef.current = true;
+    // Fire and forget: the inserted 'sending' row surfaces immediately via the change
+    // events, and the status caption tracks the multi envelope upload.
+    void (async () => {
+      await sendImage({ id: c.id, handle: c.handle }, img, conversation?.retentionSeconds ?? 86400);
+      await loadMessages();
+    })();
+  }, [pendingImage, contact, conversation, loadMessages]);
 
   const openMessageMenu = useCallback((m: Message) => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
@@ -386,6 +447,24 @@ export default function ConversationScreen() {
       return t('chatLock.undecryptable');
     }
   };
+
+  // The data URI for an image row, or null when the sealed body cannot decrypt (rendered
+  // as the shared undecryptable placeholder, never broken ciphertext).
+  const displayImageUri = (m: Message): string | null => {
+    if (m.meta == null) return m.body ? `data:image/jpeg;base64,${m.body}` : null;
+    if (!conversation?.lockPubkey) return null;
+    try {
+      const body = decryptBodyCached(conversation.id, conversation.lockPubkey, m);
+      return body ? `data:image/jpeg;base64,${body}` : null;
+    } catch {
+      return null;
+    }
+  };
+
+  // The one line preview of a quoted or replied to message (image rows read as "Photo",
+  // never their base64 body).
+  const replyPreviewText = (m: Message): string | null =>
+    m.kind === 'image' ? t('conversation.photo') : displayBody(m);
 
   // The chat lock gate replaces the thread and composer until this chat's key is
   // released. The header stays so the user knows where they are.
@@ -533,7 +612,7 @@ export default function ConversationScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={8}
       >
-        {messages.length === 0 ? (
+        {thread.length === 0 ? (
           <Pressable style={styles.empty} onPress={() => Keyboard.dismiss()}>
             <View style={styles.emptyTile}>
               <VerifiedShield size={36} color={Colors.accent} />
@@ -570,8 +649,23 @@ export default function ConversationScreen() {
                 bubbles' own onPress (needed because their long press handler swallows the
                 tap) does the same. Scroll gestures still win via responder negotiation. */}
             <Pressable style={styles.list} onPress={() => Keyboard.dismiss()}>
-              {messages.map((m) => {
-                if (m.kind !== 'text') {
+              {thread.map((item) => {
+                if (item.tr) {
+                  // An incoming image still assembling: a placeholder bubble with live
+                  // chunk progress (the per envelope change events tick it).
+                  const tr = item.tr;
+                  return (
+                    <View key={item.key} style={[styles.bubbleRow, styles.bubbleRowIn]}>
+                      <View style={[styles.bubble, styles.bubbleIn, styles.transferBubble]}>
+                        <Text variant="caption" color="textSecondary">
+                          {t('conversation.photoReceiving', { received: tr.received, total: tr.chunksTotal })}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                }
+                const m = item.m!;
+                if (m.kind !== 'text' && m.kind !== 'image') {
                   return (
                     <View key={m.id} style={styles.systemRow}>
                       <Text variant="caption" color="textTertiary" style={styles.systemText}>
@@ -586,6 +680,46 @@ export default function ConversationScreen() {
                   );
                 }
                 const outgoing = m.direction === 'out';
+                if (m.kind === 'image') {
+                  const uri = displayImageUri(m);
+                  const media = parseMediaMeta(m.mediaMeta);
+                  const bubble = uri ? (
+                    <ImageBubble
+                      uri={uri}
+                      width={media?.width ?? 0}
+                      height={media?.height ?? 0}
+                      recyclingKey={m.id}
+                      outgoing={outgoing}
+                    />
+                  ) : (
+                    // Sealed image whose key is unavailable: the shared placeholder text.
+                    <View style={[styles.bubble, styles.bubbleIn]}>
+                      <Text variant="body" color="text">
+                        {t('chatLock.undecryptable')}
+                      </Text>
+                    </View>
+                  );
+                  return (
+                    <View key={m.id} style={[styles.bubbleRow, outgoing ? styles.bubbleRowOut : styles.bubbleRowIn]}>
+                      <Pressable
+                        style={outgoing ? styles.bubbleWrapOut : null}
+                        onPress={() => (uri ? setViewerUri(uri) : Keyboard.dismiss())}
+                        onLongPress={() => openMessageMenu(m)}
+                      >
+                        {bubble}
+                        {outgoing ? (
+                          <Text
+                            variant="caption"
+                            color={m.status === 'failed' ? 'danger' : 'textTertiary'}
+                            style={styles.statusText}
+                          >
+                            {t(statusKey(m.status))}
+                          </Text>
+                        ) : null}
+                      </Pressable>
+                    </View>
+                  );
+                }
                 // The quoted block inside a reply bubble. Resolved from memory at render
                 // only; quoted plaintext is never persisted (the chat lock is not bypassed).
                 const quoted = m.replyToId != null ? messageById.get(m.replyToId) : undefined;
@@ -594,7 +728,7 @@ export default function ConversationScreen() {
                     <View style={styles.quote}>
                       <View style={styles.quoteRule} />
                       <View style={styles.quoteText}>
-                        {quoted && quoted.kind === 'text' ? (
+                        {quoted && (quoted.kind === 'text' || quoted.kind === 'image') ? (
                           <>
                             <Text variant="caption" color="accent" numberOfLines={1}>
                               {quoted.direction === 'out' ? t('conversation.you') : contact.displayName}
@@ -604,7 +738,7 @@ export default function ConversationScreen() {
                               style={outgoing ? styles.quoteBodyOut : styles.quoteBodyIn}
                               numberOfLines={1}
                             >
-                              {displayBody(quoted)}
+                              {replyPreviewText(quoted)}
                             </Text>
                           </>
                         ) : (
@@ -676,7 +810,7 @@ export default function ConversationScreen() {
                     {replyTarget.direction === 'out' ? t('conversation.you') : contact.displayName}
                   </Text>
                   <Text variant="caption" color="textSecondary" numberOfLines={1}>
-                    {displayBody(replyTarget)}
+                    {replyPreviewText(replyTarget)}
                   </Text>
                 </View>
                 <Pressable onPress={() => setReplyTarget(null)} hitSlop={8} style={styles.replyClose}>
@@ -685,6 +819,14 @@ export default function ConversationScreen() {
               </View>
             ) : null}
             <View style={styles.composerRow}>
+              <Pressable
+                onPress={() => void onAttach()}
+                disabled={attachBusy}
+                accessibilityLabel={t('conversation.attachPhoto')}
+                style={[styles.attachBtn, attachBusy ? styles.sendBtnDisabled : null]}
+              >
+                <Plus size={22} color={Colors.text} />
+              </Pressable>
               <View style={styles.inputWrap}>
                 <TextInput
                   ref={inputRef}
@@ -766,6 +908,52 @@ export default function ConversationScreen() {
         context="message"
         onBlocked={() => void loadAll()}
       />
+
+      <BottomSheet
+        visible={pendingImage != null}
+        title={t('conversation.photoConfirmTitle')}
+        onClose={() => setPendingImage(null)}
+      >
+        {pendingImage ? (
+          <View style={styles.previewWrap}>
+            <Image
+              source={{ uri: `data:image/jpeg;base64,${pendingImage.bodyB64}` }}
+              style={[
+                styles.previewImage,
+                { aspectRatio: Math.min(1.8, Math.max(0.8, pendingImage.width / Math.max(1, pendingImage.height))) },
+              ]}
+              contentFit="cover"
+              cachePolicy="memory"
+            />
+            <View style={styles.requestActions}>
+              <Button
+                label={t('common.cancel')}
+                variant="secondary"
+                onPress={() => setPendingImage(null)}
+                style={styles.requestBtn}
+              />
+              <Button label={t('conversation.photoConfirmSend')} onPress={onConfirmSendImage} style={styles.requestBtn} />
+            </View>
+          </View>
+        ) : null}
+      </BottomSheet>
+
+      {/* Full screen viewer. A plain Modal INSIDE this route, so the focus scoped
+          screenshot guard keeps covering the photo. */}
+      <Modal visible={viewerUri != null} transparent animationType="fade" onRequestClose={() => setViewerUri(null)}>
+        <Pressable style={styles.viewerBackdrop} onPress={() => setViewerUri(null)}>
+          {viewerUri ? (
+            <Image source={{ uri: viewerUri }} style={styles.viewerImage} contentFit="contain" cachePolicy="memory" />
+          ) : null}
+          <Pressable
+            onPress={() => setViewerUri(null)}
+            hitSlop={12}
+            style={[styles.viewerClose, { top: insets.top + Spacing.md }]}
+          >
+            <Close size={22} color={Colors.text} />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </Screen>
   );
 }
@@ -909,4 +1097,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sendBtnDisabled: { opacity: 0.4 },
+  attachBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: Colors.surface1,
+    borderWidth: 1,
+    borderColor: Overlay.hairline,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  transferBubble: { minWidth: 150 },
+  previewWrap: { gap: Spacing.md },
+  previewImage: { width: '100%', borderRadius: Radius.card, backgroundColor: Colors.surface2 },
+  viewerBackdrop: { flex: 1, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center' },
+  viewerImage: { width: '100%', height: '100%' },
+  viewerClose: {
+    position: 'absolute',
+    right: Spacing.xl,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Overlay.fill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

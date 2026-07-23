@@ -27,6 +27,7 @@
         "NSFaceIDUsageDescription": "Unlock Nuco with Face ID.",
         "NSCameraUsageDescription": "Nuco uses the camera only to scan a contact's code.",
         "NSMicrophoneUsageDescription": "Nuco uses the microphone only during calls. Audio is end to end encrypted.",
+        "NSPhotoLibraryUsageDescription": "Nuco accesses photos only to send an image you pick. Metadata is removed on your device before sending.",
         "UIBackgroundModes": [
           "remote-notification",
           "audio",
@@ -81,6 +82,12 @@
         {
           "cameraPermission": "Nuco uses the camera only to scan a contact's code.",
           "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Nuco accesses photos only to send an image you pick. Metadata is removed on your device before sending."
         }
       ],
       "expo-notifications",

@@ -3,7 +3,7 @@
 // (sessions, prekeys, identity key pair) lives here too, because secure-store values are
 // size limited and the Signal store can exceed that limit.
 
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 export const SCHEMA: readonly string[] = [
   `CREATE TABLE IF NOT EXISTS meta (
@@ -67,7 +67,34 @@ export const SCHEMA: readonly string[] = [
     expires_at      INTEGER,
     read            INTEGER NOT NULL DEFAULT 0,
     kind            TEXT NOT NULL DEFAULT 'text',
-    reply_to_id     TEXT
+    reply_to_id     TEXT,
+    media_meta      TEXT
+  )`,
+
+  // In flight incoming images (protocol 3.3). One row per announced transfer plus its
+  // received chunks; assembled into a messages row (id = ref) once complete, then removed.
+  // Incomplete transfers are garbage collected by the expiry sweeper. The chunk data is
+  // plaintext base64 protected at rest by SQLCipher like message bodies; for chat locked
+  // conversations the assembled body is sealed at completion (sealing the staged chunks
+  // themselves would make assembly impossible while locked).
+  `CREATE TABLE IF NOT EXISTS image_transfers (
+    ref             TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    mime            TEXT NOT NULL,
+    width           INTEGER NOT NULL,
+    height          INTEGER NOT NULL,
+    bytes           INTEGER NOT NULL,
+    sha256          TEXT NOT NULL,
+    chunks_total    INTEGER NOT NULL,
+    sent_at         INTEGER NOT NULL,
+    created_at      INTEGER NOT NULL
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS image_chunks (
+    ref  TEXT NOT NULL REFERENCES image_transfers(ref) ON DELETE CASCADE,
+    seq  INTEGER NOT NULL,
+    data TEXT NOT NULL,
+    PRIMARY KEY (ref, seq)
   )`,
 
   `CREATE TABLE IF NOT EXISTS push_endpoints (

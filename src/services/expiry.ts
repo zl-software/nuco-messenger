@@ -3,6 +3,7 @@
 // deletes them on a short cadence and notifies the UI. It runs only while unlocked and is torn
 // down on lock (the database is closed then).
 
+import { sweepStaleTransfers } from '@/db/repos/image-transfers';
 import { sweepExpired } from '@/db/repos/messages';
 import { emitConversationsChanged } from './data-events';
 import { isUnlocked } from '@/lock/lock-controller';
@@ -11,12 +12,18 @@ import { isUnlocked } from '@/lock/lock-controller';
 // past its expiry; the DELETE is indexed and cheap.
 const SWEEP_INTERVAL_MS = 10_000;
 
+// Incomplete image transfers whose sender gave up. Comfortably past the relay queue's 30
+// day TTL tail is not needed; two weeks bounds staging growth while letting a long
+// offline sender finish on a later reconnect.
+const TRANSFER_GC_MS = 14 * 24 * 60 * 60 * 1000;
+
 let timer: ReturnType<typeof setInterval> | null = null;
 
 async function sweepOnce(): Promise<void> {
   if (!isUnlocked()) return;
   try {
-    if ((await sweepExpired(Date.now())) > 0) emitConversationsChanged();
+    const removed = await sweepExpired(Date.now());
+    if ((await sweepStaleTransfers(Date.now() - TRANSFER_GC_MS)) > 0 || removed > 0) emitConversationsChanged();
   } catch {
     // The database can close under us (lock); the next unlock re-arms the sweeper.
   }

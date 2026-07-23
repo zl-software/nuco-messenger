@@ -18,6 +18,8 @@ import { fileURLToPath } from 'node:url';
 import { ed25519 } from '@noble/curves/ed25519.js';
 import { randomBytes } from '@noble/hashes/utils.js';
 
+import { encodeContent, pad, IMAGE_CHUNK_DATA_B64_MAX, IMAGE_MAX_CHUNKS } from '@nuco/protocol';
+
 import { NodeLibsignalBackend } from '../src/crypto/backend-node';
 import {
   generateChatLockKeys,
@@ -46,6 +48,13 @@ import {
 import { NucoSignal, IdentityChangedError, type SessionBootstrap } from '../src/crypto/signal';
 import { computeCardHash, isSessionInitiator } from '../src/crypto/verification';
 import { utf8Encode, utf8Decode, bytesToBase64, base64ToBytes } from '../src/crypto/bytes';
+import {
+  assembleAndVerify,
+  chunkCountFor,
+  chunkEnvelopeId,
+  sha256B64OfB64,
+  splitB64,
+} from '../src/services/image-codec';
 
 let failures = 0;
 function check(cond: boolean, label: string): void {
@@ -342,6 +351,72 @@ async function runChatLock(): Promise<void> {
   check(wrongCodeThrew, 'wrong code fails the authenticated unwrap');
 }
 
+// The image chunk codec (protocol 3.3): pure string and hash work shared by the app's
+// send/receive paths and the e2e harness.
+async function runImageCodec(): Promise<void> {
+  console.log('\n  image chunk codec (protocol 3.3)');
+
+  const rejects = (p: Promise<unknown>): Promise<boolean> =>
+    p.then(
+      () => false,
+      () => true,
+    );
+
+  // Deterministic filler (noble's randomBytes caps at 64 KiB per call; entropy is
+  // irrelevant to the codec).
+  const patternBytes = (n: number): Uint8Array => {
+    const bytes = new Uint8Array(n);
+    for (let i = 0; i < n; i++) bytes[i] = (i * 31 + 7) & 0xff;
+    return bytes;
+  };
+
+  // Split and reassemble around the chunk boundary and with a ragged tail.
+  for (const n of [1, 47999, 48000, 48001, 150000]) {
+    const body = bytesToBase64(patternBytes(n));
+    const chunks = splitB64(body);
+    const fullChunksExact = chunks.every((c, i) => i === chunks.length - 1 || c.length === IMAGE_CHUNK_DATA_B64_MAX);
+    const digest = await sha256B64OfB64(body);
+    const assembled = await assembleAndVerify(chunks, n, digest);
+    check(
+      chunks.length === chunkCountFor(n) && fullChunksExact && assembled === body,
+      `${n} raw bytes split into ${chunks.length} chunk(s) and round trip`,
+    );
+  }
+
+  const body = bytesToBase64(patternBytes(150000));
+  const digest = await sha256B64OfB64(body);
+  const chunks = splitB64(body);
+  check(
+    await rejects(assembleAndVerify([chunks[1]!, chunks[0]!, ...chunks.slice(2)], 150000, digest)),
+    'out of order chunks fail the digest',
+  );
+  check(await rejects(assembleAndVerify(chunks, 149999, digest)), 'a size mismatch is detected');
+  const wrongDigest = digest.slice(0, 43) + (digest.endsWith('A') ? 'B' : 'A');
+  check(await rejects(assembleAndVerify(chunks, 150000, wrongDigest)), 'a digest mismatch is detected');
+  check(chunkEnvelopeId('ref-1', 3) === 'ref-1#3', 'chunk envelope ids are deterministic');
+
+  // The wire budget: a maximal chunk's JSON must land in the 65536 padding bucket, which
+  // is what keeps its sealed ciphertext under the relay's default per message size cap.
+  const maximal = {
+    t: 'image/chunk' as const,
+    ref: 'r'.repeat(64),
+    seq: IMAGE_MAX_CHUNKS - 1,
+    data: 'A'.repeat(IMAGE_CHUNK_DATA_B64_MAX),
+  };
+  const encoded = encodeContent(maximal);
+  check(encoded.length <= 65532, `a maximal chunk encodes to ${encoded.length} bytes (budget 65532)`);
+  check(pad(encoded).length === 65536, 'a maximal chunk pads into the 65536 bucket');
+
+  // The chat lock seals photo sized base64 bodies (the at-rest path for locked chats);
+  // the timing print tracks the synchronous JS thread cost.
+  const keys = generateChatLockKeys();
+  const big = bytesToBase64(patternBytes(525000));
+  const t0 = Date.now();
+  const sealedBig = sealBody(big, keys.pubKeyB64, 'convo-img', 'msg-img');
+  const openedBig = openBody(sealedBig.bodyB64, sealedBig.meta, keys.privKey, keys.pubKeyB64, 'convo-img', 'msg-img');
+  check(openedBig === big, `the chat lock seals a ${big.length} char image body (seal plus open ${Date.now() - t0}ms)`);
+}
+
 function throws(fn: () => unknown): boolean {
   try {
     fn();
@@ -356,6 +431,7 @@ async function main(): Promise<void> {
   await runFlow();
   await runIdentityChange();
   await runChatLock();
+  await runImageCodec();
 
   if (failures > 0) {
     console.error(`\ncrypto self test FAILED with ${failures} failure(s)`);

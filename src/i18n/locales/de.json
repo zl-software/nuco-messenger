@@ -95,6 +95,7 @@
     "unverified": "Nicht verifiziert, scannen zum Bestätigen",
     "you": "Du: {{text}}",
     "hiddenPreview": "Nachricht",
+    "photoPreview": "Foto",
     "registrationBlocked": "Registrierung blockiert",
     "accountSuspended": "Konto gesperrt",
     "clearAction": "Leeren",
@@ -142,7 +143,14 @@
     "deleteForEveryoneTitle": "Für alle löschen?",
     "deleteForEveryoneBody": "Dies entfernt die Nachricht auf diesem Gerät und bittet das Gerät von {{name}}, sie ebenfalls zu entfernen. Es kann nicht rückgängig gemacht werden.",
     "you": "Du",
-    "replyMissing": "Ursprüngliche Nachricht nicht verfügbar"
+    "replyMissing": "Ursprüngliche Nachricht nicht verfügbar",
+    "attachPhoto": "Foto anhängen",
+    "photo": "Foto",
+    "photoConfirmTitle": "Foto senden",
+    "photoConfirmSend": "Senden",
+    "photoReceiving": "Foto wird empfangen ({{received}}/{{total}})",
+    "photoPrepareFailed": "Dieses Foto konnte nicht vorbereitet werden. Bitte versuche ein anderes.",
+    "photoTooLarge": "Dieses Foto ist selbst nach Komprimierung zu groß zum Senden."
   },
   "retention": {
     "title": "Verschwindende Nachrichten",

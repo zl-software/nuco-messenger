@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 
 import { LIMITS, REPORT_CATEGORIES, type ReportCategory, type ReportContext } from '@nuco/protocol';
 
-import { setBlocked } from '@/db/repos/contacts';
+import { setContactBlocked } from '@/services/contacts';
 import { REPORT_ERROR_CODES, submitReport } from '@/services/report';
 import { Colors, Overlay, Spacing } from '@/constants/theme';
 
@@ -60,7 +60,7 @@ export function ReportSheet({ visible, onClose, contact, context, onBlocked }: R
     setBusy(true);
     setError(null);
     if (alsoBlock && !contact.blocked) {
-      await setBlocked(contact.id, true);
+      await setContactBlocked(contact.id, true);
       onBlocked?.();
     }
     try {

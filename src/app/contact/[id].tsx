@@ -11,11 +11,10 @@ import { useCall } from '@/state/call';
 import {
   getContact,
   isMutuallyVerified,
-  setBlocked,
   setMuted,
   type Contact,
 } from '@/db/repos/contacts';
-import { removeContact } from '@/services/contacts';
+import { removeContact, setContactBlocked } from '@/services/contacts';
 import { getConversation, type Conversation } from '@/db/repos/conversations';
 import { biometricsAvailable } from '@/lock/biometrics';
 import {
@@ -164,7 +163,7 @@ export default function ContactDetailScreen() {
 
   async function onToggleBlock(value: boolean) {
     if (!contact) return;
-    await setBlocked(contact.id, value);
+    await setContactBlocked(contact.id, value);
     setContact({ ...contact, blocked: value });
   }
 

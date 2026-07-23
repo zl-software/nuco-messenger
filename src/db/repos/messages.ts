@@ -19,6 +19,10 @@ export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'failed';
 // or a marker ('busy' | 'canceled' | 'error').
 export type MessageKind =
   | 'text'
+  // An image bubble. The body is the base64 of the encoded (metadata stripped) jpeg,
+  // sealed like a text body in chat locked conversations; media_meta carries the unsealed
+  // layout JSON {mime, width, height, bytes}. The row id is the announcement envelope id.
+  | 'image'
   | 'retention/request'
   | 'retention/changed'
   | 'retention/declined'
@@ -59,6 +63,9 @@ export interface Message {
   // Shared id of the quoted text when this row is a reply (both peers key a text by the
   // same envelope id). Resolved best effort at render; the referenced row may be gone.
   replyToId?: string | null;
+  // Unsealed layout JSON for image rows: {mime, width, height, bytes}. Never contains
+  // image content and never participates in chat lock sealing.
+  mediaMeta?: string | null;
 }
 
 interface MessageRow {
@@ -73,6 +80,7 @@ interface MessageRow {
   expires_at: number | null;
   read: number;
   reply_to_id: string | null;
+  media_meta: string | null;
 }
 
 function toMessage(r: MessageRow): Message {
@@ -88,14 +96,15 @@ function toMessage(r: MessageRow): Message {
     expiresAt: r.expires_at,
     read: r.read === 1,
     replyToId: r.reply_to_id,
+    mediaMeta: r.media_meta,
   };
 }
 
 export async function insertMessage(m: Message): Promise<void> {
   await getDb().execute(
-    `INSERT OR IGNORE INTO messages (id, conversation_id, direction, kind, ciphertext_meta, body_encrypted, status, sent_at, expires_at, read, reply_to_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [m.id, m.conversationId, m.direction, m.kind, m.meta ?? null, m.body, m.status, m.sentAt, m.expiresAt, m.read ? 1 : 0, m.replyToId ?? null],
+    `INSERT OR IGNORE INTO messages (id, conversation_id, direction, kind, ciphertext_meta, body_encrypted, status, sent_at, expires_at, read, reply_to_id, media_meta)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [m.id, m.conversationId, m.direction, m.kind, m.meta ?? null, m.body, m.status, m.sentAt, m.expiresAt, m.read ? 1 : 0, m.replyToId ?? null, m.mediaMeta ?? null],
   );
 }
 
@@ -117,7 +126,7 @@ export async function deleteMessage(id: string): Promise<void> {
 // cleared, or never stored) deletes nothing, which is the correct silent no-op.
 export async function deletePeerAuthoredMessage(id: string, conversationId: string): Promise<number> {
   const result = await getDb().execute(
-    "DELETE FROM messages WHERE id = ? AND conversation_id = ? AND direction = 'in' AND kind = 'text'",
+    "DELETE FROM messages WHERE id = ? AND conversation_id = ? AND direction = 'in' AND kind IN ('text', 'image')",
     [id, conversationId],
   );
   return result.rowsAffected ?? 0;
@@ -128,11 +137,11 @@ export async function updateMessageBody(id: string, body: string, meta: string |
   await getDb().execute('UPDATE messages SET body_encrypted = ?, ciphertext_meta = ? WHERE id = ?', [body, meta, id]);
 }
 
-// Plaintext text rows of one conversation, oldest first, for the batched seal pass. The
-// meta IS NULL predicate makes the pass idempotent and resumable after a crash.
+// Plaintext text and image rows of one conversation, oldest first, for the batched seal
+// pass. The meta IS NULL predicate makes the pass idempotent and resumable after a crash.
 export async function listSealablePlaintext(conversationId: string, limit: number): Promise<Message[]> {
   const result = await getDb().execute(
-    `SELECT * FROM messages WHERE conversation_id = ? AND kind = 'text' AND ciphertext_meta IS NULL AND body_encrypted IS NOT NULL
+    `SELECT * FROM messages WHERE conversation_id = ? AND kind IN ('text', 'image') AND ciphertext_meta IS NULL AND body_encrypted IS NOT NULL
      ORDER BY sent_at LIMIT ?`,
     [conversationId, limit],
   );
@@ -161,20 +170,22 @@ export async function updateMessageStatus(id: string, status: MessageStatus): Pr
 export interface PendingOutbound {
   id: string;
   conversationId: string;
+  kind: MessageKind;
   body: string;
   handle: string;
   replyToId: string | null;
+  mediaMeta: string | null;
 }
 
-// Outgoing text still marked 'sending' was interrupted (the in memory relay queue is lost on
-// app kill). The conversation id is the contact id, so join to recover the peer handle.
-// Sealed rows are excluded: their stored body is ciphertext, and only the chat's released
-// private key can recover the plaintext (see listPendingOutboundSealed).
+// Outgoing text or images still marked 'sending' were interrupted (the in memory relay
+// queue is lost on app kill). The conversation id is the contact id, so join to recover
+// the peer handle. Sealed rows are excluded: their stored body is ciphertext, and only the
+// chat's released private key can recover the plaintext (see listPendingOutboundSealed).
 export async function listPendingOutbound(): Promise<PendingOutbound[]> {
   const result = await getDb().execute(
-    `SELECT m.id, m.conversation_id AS conversationId, m.body_encrypted AS body, m.reply_to_id AS replyToId, c.handle
+    `SELECT m.id, m.conversation_id AS conversationId, m.kind, m.body_encrypted AS body, m.reply_to_id AS replyToId, m.media_meta AS mediaMeta, c.handle
      FROM messages m JOIN contacts c ON c.id = m.conversation_id
-     WHERE m.direction = 'out' AND m.kind = 'text' AND m.status = 'sending' AND m.body_encrypted IS NOT NULL
+     WHERE m.direction = 'out' AND m.kind IN ('text', 'image') AND m.status = 'sending' AND m.body_encrypted IS NOT NULL
        AND m.ciphertext_meta IS NULL
      ORDER BY m.sent_at`,
   );
@@ -189,9 +200,9 @@ export interface PendingOutboundSealed extends PendingOutbound {
 // that chat, the only moment the plaintext can be recovered.
 export async function listPendingOutboundSealed(conversationId: string): Promise<PendingOutboundSealed[]> {
   const result = await getDb().execute(
-    `SELECT m.id, m.conversation_id AS conversationId, m.body_encrypted AS body, m.ciphertext_meta AS meta, m.reply_to_id AS replyToId, c.handle
+    `SELECT m.id, m.conversation_id AS conversationId, m.kind, m.body_encrypted AS body, m.ciphertext_meta AS meta, m.reply_to_id AS replyToId, m.media_meta AS mediaMeta, c.handle
      FROM messages m JOIN contacts c ON c.id = m.conversation_id
-     WHERE m.conversation_id = ? AND m.direction = 'out' AND m.kind = 'text' AND m.status = 'sending'
+     WHERE m.conversation_id = ? AND m.direction = 'out' AND m.kind IN ('text', 'image') AND m.status = 'sending'
        AND m.body_encrypted IS NOT NULL AND m.ciphertext_meta IS NOT NULL
      ORDER BY m.sent_at`,
     [conversationId],
@@ -223,8 +234,10 @@ export async function conversationPreviews(): Promise<ConversationPreview[]> {
   // Select exactly one latest row per conversation. Ordering by (sent_at, rowid) breaks ties
   // when two messages share the same millisecond, so a conversation never yields two previews
   // (which would collide on the FlatList key).
+  // Image bodies are multi hundred KB base64 strings; the chats list never renders them
+  // (image previews are a localized label), so exclude them from the row.
   const result = await getDb().execute(
-    `SELECT m.conversation_id, m.body_encrypted AS body, m.direction, m.kind, m.sent_at,
+    `SELECT m.conversation_id, CASE WHEN m.kind = 'image' THEN NULL ELSE m.body_encrypted END AS body, m.direction, m.kind, m.sent_at,
             (SELECT COUNT(*) FROM messages u WHERE u.conversation_id = m.conversation_id AND u.read = 0 AND u.direction = 'in') AS unread
      FROM messages m
      WHERE m.rowid = (

@@ -95,6 +95,7 @@
     "unverified": "Unverified, scan to confirm",
     "you": "You: {{text}}",
     "hiddenPreview": "Message",
+    "photoPreview": "Photo",
     "registrationBlocked": "Registration blocked",
     "accountSuspended": "Account suspended",
     "clearAction": "Clear",
@@ -142,7 +143,14 @@
     "deleteForEveryoneTitle": "Delete for everyone?",
     "deleteForEveryoneBody": "This removes the message on this device and asks {{name}}'s device to remove it too. It cannot be undone.",
     "you": "You",
-    "replyMissing": "Original message unavailable"
+    "replyMissing": "Original message unavailable",
+    "attachPhoto": "Attach a photo",
+    "photo": "Photo",
+    "photoConfirmTitle": "Send photo",
+    "photoConfirmSend": "Send",
+    "photoReceiving": "Receiving photo ({{received}}/{{total}})",
+    "photoPrepareFailed": "This photo could not be prepared. Please try another one.",
+    "photoTooLarge": "This photo is too large to send, even after compression."
   },
   "retention": {
     "title": "Disappearing messages",

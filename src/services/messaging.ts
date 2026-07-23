@@ -35,8 +35,28 @@ import {
   updateMessageStatus,
   type MessageKind,
 } from '@/db/repos/messages';
+import {
+  chunkCount,
+  createTransfer,
+  deleteConversationTransfer,
+  deleteTransfer,
+  getTransfer,
+  insertChunk,
+  listChunkData,
+} from '@/db/repos/image-transfers';
 import { getSignal } from './account';
 import { emitConversationsChanged } from './data-events';
+import {
+  assembleAndVerify,
+  buildImageMeta,
+  chunkEnvelopeId,
+  parseMediaMeta,
+  rawBytesOfB64,
+  sha256B64OfB64,
+  splitB64,
+  type ImageMediaMeta,
+} from './image-codec';
+import type { PreparedImage } from './images';
 import { getRelay } from './relay';
 import { sealBody } from '@/crypto/chat-lock';
 import { isChatUnlocked, openWithReleasedKey } from '@/lock/chat-locks';
@@ -150,13 +170,16 @@ function wakeHintFor(content: MessageContent): WakeHint {
     case 'retention/accept':
     case 'screenshot/request':
     case 'screenshot/accept':
+    // Only the image announcement banners; its chunks ride 'none' below, so an offline
+    // receiver gets exactly one banner per photo.
+    case 'image':
       return 'alert';
     case 'call/offer':
       return 'voip';
     default:
       // verify/confirm, call/accept, call/answer, call/end, retention/cancel,
-      // screenshot/cancel, message/delete, profile/name: nothing a closed app could
-      // show; the envelope delivers on the next connect.
+      // screenshot/cancel, message/delete, profile/name, image/chunk: nothing a closed
+      // app could show; the envelope delivers on the next connect.
       return 'none';
   }
 }
@@ -217,6 +240,72 @@ function textContent(body: string, replyTo: string | null): MessageContent {
   return replyTo ? { t: 'text', body, replyTo } : { t: 'text', body };
 }
 
+// Send an image (base64 jpeg, metadata already stripped by services/images). The stored
+// row mirrors sendText: the body seals like a text body in chat locked conversations, the
+// unsealed media_meta carries only layout facts (mime, dimensions, byte count). On the
+// wire the image is one `image` announcement plus its chunks; the whole sequence must
+// succeed for the row to flip to 'sent'.
+export async function sendImage(
+  contact: { id: string; handle: string },
+  image: PreparedImage,
+  retentionSeconds: number,
+): Promise<void> {
+  const now = Date.now();
+  const id = Crypto.randomUUID();
+  const convo = await ensureConversation(contact.id, contact.id, retentionSeconds, now);
+  const sealed = convo.lockEnabled && convo.lockPubkey ? sealBody(image.bodyB64, convo.lockPubkey, contact.id, id) : null;
+  const mediaMeta: ImageMediaMeta = { mime: image.mime, width: image.width, height: image.height, bytes: image.bytes };
+  await insertMessage({
+    id,
+    conversationId: contact.id,
+    direction: 'out',
+    kind: 'image',
+    body: sealed ? sealed.bodyB64 : image.bodyB64,
+    meta: sealed ? sealed.meta : null,
+    status: 'sending',
+    sentAt: now,
+    expiresAt: expiryFor(retentionSeconds, now),
+    read: true,
+    mediaMeta: JSON.stringify(mediaMeta),
+  });
+  emitConversationsChanged(contact.id);
+  try {
+    await sendImageEnvelopes(contact.handle, id, image.bodyB64, { ...mediaMeta, sha256: image.sha256 });
+    await updateMessageStatus(id, 'sent');
+  } catch {
+    await updateMessageStatus(id, 'failed');
+  }
+  emitConversationsChanged(contact.id);
+}
+
+// The announcement first, then every chunk, in order (the relay client drains its queue
+// serially and the mailbox delivers FIFO, so the receiver always sees the announcement
+// before its chunks). Chunk envelope ids are deterministic, so a resend after an app kill
+// dedupes at the relay queue and at the receiver.
+async function sendImageEnvelopes(
+  handle: string,
+  id: string,
+  bodyB64: string,
+  meta: ImageMediaMeta & { sha256: string },
+): Promise<void> {
+  await sendContent(handle, buildImageMeta(meta), id);
+  const slices = splitB64(bodyB64);
+  for (let seq = 0; seq < slices.length; seq++) {
+    await sendContent(handle, { t: 'image/chunk', ref: id, seq, data: slices[seq]! }, chunkEnvelopeId(id, seq));
+  }
+}
+
+// Resend an interrupted image from its stored row. The digest is recomputed from the body
+// (it is not stored) and the byte count comes from the body too, so the announcement is
+// always consistent with what actually goes out.
+async function resendImage(handle: string, id: string, bodyB64: string, mediaMetaJson: string | null): Promise<void> {
+  const meta = parseMediaMeta(mediaMetaJson);
+  const bytes = rawBytesOfB64(bodyB64);
+  if (!meta || bytes < 1) throw new Error('image row incomplete');
+  const digest = await sha256B64OfB64(bodyB64);
+  await sendImageEnvelopes(handle, id, bodyB64, { ...meta, bytes, sha256: digest });
+}
+
 // Re-send messages left in 'sending' after an app kill (the relay's outbound queue lives only
 // in memory). The relay dedupes by (recipient, id), so a message that did reach the relay is
 // not delivered twice. Runs in the background; each send is queued and flushes on connect.
@@ -230,7 +319,11 @@ export async function resendPendingOutbound(): Promise<void> {
   }
   for (const p of pending) {
     try {
-      await sendContent(p.handle, textContent(p.body, p.replyToId), p.id);
+      if (p.kind === 'image') {
+        await resendImage(p.handle, p.id, p.body, p.mediaMeta);
+      } else {
+        await sendContent(p.handle, textContent(p.body, p.replyToId), p.id);
+      }
       await updateMessageStatus(p.id, 'sent');
     } catch {
       await updateMessageStatus(p.id, 'failed');
@@ -252,7 +345,11 @@ export async function resendSealedPending(conversationId: string, lockPubkey: st
   for (const p of pending) {
     try {
       const body = openWithReleasedKey(conversationId, lockPubkey, p.id, p.body, p.meta);
-      await sendContent(p.handle, textContent(body, p.replyToId), p.id);
+      if (p.kind === 'image') {
+        await resendImage(p.handle, p.id, body, p.mediaMeta);
+      } else {
+        await sendContent(p.handle, textContent(body, p.replyToId), p.id);
+      }
       await updateMessageStatus(p.id, 'sent');
     } catch {
       await updateMessageStatus(p.id, 'failed');
@@ -271,10 +368,10 @@ export async function deleteMessageForMe(conversationId: string, messageId: stri
 // Delete for everyone: remove the local row, then ask the peer to remove theirs (best
 // effort, like the retention and screenshot controls; an offline peer gets the queued
 // request on reconnect). The guards re-verify what the UI already gated: only own text
-// messages in this conversation can be retracted.
+// or image messages in this conversation can be retracted.
 export async function deleteMessageForEveryone(contact: { id: string; handle: string }, messageId: string): Promise<void> {
   const m = await getMessage(messageId);
-  if (!m || m.conversationId !== contact.id || m.direction !== 'out' || m.kind !== 'text') return;
+  if (!m || m.conversationId !== contact.id || m.direction !== 'out' || (m.kind !== 'text' && m.kind !== 'image')) return;
   await deleteMessage(messageId);
   emitConversationsChanged(contact.id);
   await sendControl(contact.handle, { t: 'message/delete', id: messageId });
@@ -569,6 +666,69 @@ async function doReceiveEnvelope(from: string, envelope: MessageEnvelope): Promi
         });
         break;
       }
+      case 'image': {
+        // The announcement of an incoming image; its chunks follow on the same channel
+        // (FIFO, so never before this). A redelivery after completion hits the assembled
+        // messages row and just acks; a redelivery of a live transfer is an
+        // INSERT OR IGNORE no-op. The bounds were validated at decode.
+        if (await getMessage(envelope.id)) break;
+        await createTransfer({
+          ref: envelope.id,
+          conversationId: contact.id,
+          mime: content.mime,
+          width: content.width,
+          height: content.height,
+          bytes: content.bytes,
+          sha256: content.sha256,
+          chunksTotal: content.chunks,
+          sentAt: envelope.sentAt || now,
+          createdAt: now,
+        });
+        break;
+      }
+      case 'image/chunk': {
+        const transfer = await getTransfer(content.ref);
+        // No transfer row for this sender means the image already assembled (a duplicate
+        // chunk), the transfer was garbage collected, or the ref was never announced (or
+        // belongs to another conversation): ack and drop in every case. Requiring the
+        // announcement first is what bounds orphan storage.
+        if (!transfer || transfer.conversationId !== contact.id || content.seq >= transfer.chunksTotal) break;
+        // The chunk row is persisted BEFORE the shared ack below, so a crash in between
+        // redelivers the chunk and the INSERT OR IGNORE absorbs it.
+        await insertChunk(content.ref, content.seq, content.data);
+        if ((await chunkCount(content.ref)) === transfer.chunksTotal) {
+          try {
+            const bodyB64 = await assembleAndVerify(await listChunkData(content.ref), transfer.bytes, transfer.sha256);
+            // Like a text body, the assembled image seals with the chat pubkey in locked
+            // chats; no secret is needed. Expiry anchors at completion on the local clock.
+            const sealed =
+              convo.lockEnabled && convo.lockPubkey ? sealBody(bodyB64, convo.lockPubkey, contact.id, content.ref) : null;
+            await insertMessage({
+              id: content.ref,
+              conversationId: contact.id,
+              direction: 'in',
+              kind: 'image',
+              body: sealed ? sealed.bodyB64 : bodyB64,
+              meta: sealed ? sealed.meta : null,
+              status: 'delivered',
+              sentAt: transfer.sentAt,
+              expiresAt: expiryFor(convo.retentionSeconds, now),
+              read: false,
+              mediaMeta: JSON.stringify({
+                mime: transfer.mime,
+                width: transfer.width,
+                height: transfer.height,
+                bytes: transfer.bytes,
+              }),
+            });
+          } catch {
+            // Size or digest mismatch: a corrupt transfer. Never render it; dropping the
+            // staging rows below is the whole cleanup, and the chunk is still acked.
+          }
+          await deleteTransfer(content.ref);
+        }
+        break;
+      }
       // System rows reuse the envelope id, so insertMessage's INSERT OR IGNORE makes a
       // relay redelivery a no-op. Incoming request, changed, and declined rows arrive
       // unread on purpose: they surface as the unread badge on the chats list.
@@ -693,6 +853,9 @@ async function doReceiveEnvelope(from: string, envelope: MessageEnvelope): Promi
         // socket in that ms scale window could bring it back, and then it is simply
         // deleted again).
         await deletePeerAuthoredMessage(content.id, contact.id);
+        // The id may also name an image still in flight: drop its staging transfer so a
+        // retracted photo never assembles after the fact.
+        await deleteConversationTransfer(content.id, contact.id);
         break;
       case 'profile/name': {
         // The peer renamed themselves. Applying it is cooperative client behavior; the
